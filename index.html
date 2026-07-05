@@ -1103,8 +1103,26 @@ document.getElementById('btnFullscreen').addEventListener('click', ()=>{
   }
 });
 document.getElementById('btnExit').addEventListener('click', ()=>{
-  window.close();
-  setTimeout(()=>showToast('Просто закрой вкладку 🙂'), 200);
+  if(gameStarted){
+    // Exit to main menu: stop the current match and return to the pre-game cinematic screen
+    gameStarted = false;
+    paused = false;
+    gameOver = false;
+    if(mpConn){ try{ mpConn.close(); }catch(e){} mpConn = null; }
+    if(mpPeer){ try{ mpPeer.destroy(); }catch(e){} mpPeer = null; }
+    multiplayerMode = null;
+    mpResetChoiceView();
+    document.getElementById('winscreen').classList.remove('show');
+    document.getElementById('gameHud').classList.remove('show');
+    document.getElementById('menuScreen').style.display = 'flex';
+    document.getElementById('btnRestart').style.display = 'none';
+    document.getElementById('btnExit').innerHTML = 'ВЫХОД <span class="arrow">▶</span>';
+    document.getElementById('btnStart').innerHTML = 'СТАРТ ИГРЫ <span class="arrow">▶</span>';
+    showMenuPanel('panelMain');
+  } else {
+    window.close();
+    setTimeout(()=>showToast('Просто закрой вкладку 🙂'), 200);
+  }
 });
 let countdownActive = false;
 function startCountdown(onComplete){
@@ -1204,6 +1222,7 @@ menuOpenBtn.addEventListener('click', ()=>{
   showMenuPanel('panelMain');
   document.getElementById('menuScreen').style.display = 'flex';
   document.getElementById('btnRestart').style.display = (gameStarted && !gameOver) ? 'flex' : 'none';
+  document.getElementById('btnExit').innerHTML = gameStarted ? 'ВЫЙТИ В ГЛАВНОЕ МЕНЮ <span class="arrow">▶</span>' : 'ВЫХОД <span class="arrow">▶</span>';
   const startLabel = document.getElementById('btnStart');
   startLabel.innerHTML = gameOver ? 'НОВАЯ ИГРА <span class="arrow">▶</span>' : 'ПРОДОЛЖИТЬ <span class="arrow">▶</span>';
 });
@@ -2656,7 +2675,7 @@ function animate(){
     camera.up.set(0,1,0);
     camera.lookAt(midpoint.x, midpoint.y+2, midpoint.z);
 
-    updateEngineSound(Math.max(playerVel.length(), aiVel.length())*0.28, false, 0.5);
+    updateEngineSound(Math.max(playerVel.length(), aiVel.length())*0.28, false, 0.3);
   } else {
     // Paused mid-match, countdown in progress, or game over waiting at the menu — engine sound fades to silence
     updateEngineSound(0);
