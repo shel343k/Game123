@@ -1,0 +1,2676 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>SKYLURE — прототип</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0B0E14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SKYLURE">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+  :root{
+    --void:#070B14;
+    --panel:rgba(10,16,28,0.72);
+    --hairline:rgba(120,170,255,0.18);
+    --text-hi:#E7EDFB;
+    --text-lo:#7C8AA8;
+    --lure:#FFC94A;
+    --team-you:#3DD6D0;
+    --team-ai:#FF6259;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color: transparent;}
+  html,body{width:100%; height:100%; overflow:hidden; background:var(--void); font-family:'Rajdhani',sans-serif;}
+  #scene{position:fixed; inset:0;}
+
+  .vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:2;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.28) 100%);
+  }
+
+  .countdown-overlay{
+    position:fixed; inset:0; z-index:25; pointer-events:none;
+    display:none; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  .countdown-overlay.show{display:flex;}
+  .countdown-number{
+    font-family:'Rajdhani',sans-serif; font-weight:800; font-size:min(220px, 30vw);
+    color:#3DD6D0; text-shadow:0 0 50px rgba(61,214,208,0.85), 0 0 12px rgba(255,255,255,0.5);
+    transform:translateY(-140vh); opacity:0;
+    transition: transform 0.32s cubic-bezier(.2,.8,.3,1), opacity 0.18s;
+  }
+  .countdown-number.fall-in{
+    transform:translateY(0); opacity:1;
+  }
+  .countdown-number.fall-out{
+    transform:translateY(140vh); opacity:0;
+    transition: transform 0.24s cubic-bezier(.6,-0.2,.9,.3), opacity 0.2s;
+  }
+
+  .hud{
+    position:fixed; inset:0; pointer-events:none;
+    display:flex; flex-direction:column; justify-content:space-between;
+    padding:18px; color:var(--text-hi);
+  }
+  .topbar{
+    display:flex; justify-content:space-between; align-items:flex-start;
+  }
+  .topbar > div:first-child{margin-left:58px;}
+  .title{
+    font-weight:700; font-size:20px; letter-spacing:.08em; color:var(--text-hi);
+    text-shadow:0 0 12px rgba(61,214,208,0.5);
+  }
+  .subtitle{font-size:11px; color:var(--text-lo); letter-spacing:.04em; margin-top:2px;}
+  .scoreboard{
+    display:flex; gap:10px;
+  }
+  .score-chip{
+    background:var(--panel); border:1px solid var(--hairline); border-radius:10px;
+    padding:8px 14px; text-align:center; backdrop-filter:blur(6px);
+  }
+  .score-chip .label{font-size:10px; color:var(--text-lo); text-transform:uppercase; letter-spacing:.06em;}
+  .score-chip .value{font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600;}
+  .you .value{color:var(--team-you);}
+  .ai .value{color:var(--team-ai);}
+
+  .banner{
+    position:fixed; top:70px; left:50%; transform:translateX(-50%);
+    font-size:14px; font-weight:600; letter-spacing:.05em;
+    color:var(--lure); text-shadow:0 0 10px rgba(255,201,74,0.6);
+    opacity:0; transition:opacity .3s;
+    pointer-events:none;
+  }
+  .banner.show{opacity:1;}
+
+  .joystick-zone{
+    position:fixed; bottom:22px; width:188px; height:188px;
+    border-radius:50%; border:1px solid var(--hairline);
+    background:radial-gradient(circle, rgba(61,214,208,0.06), transparent 70%);
+    pointer-events:auto; touch-action:none;
+  }
+  #joyLeft{left:22px;}
+  #joyRight{right:22px;}
+  .joystick-nub{
+    position:absolute; width:70px; height:70px; border-radius:50%;
+    background:linear-gradient(135deg, rgba(61,214,208,0.9), rgba(61,214,208,0.4));
+    top:50%; left:50%; transform:translate(-50%,-50%);
+    box-shadow:0 0 18px rgba(61,214,208,0.5);
+  }
+  .joystick-label{
+    position:absolute; bottom:-20px; width:100%; text-align:center;
+    font-size:10px; color:var(--text-lo); letter-spacing:.06em; text-transform:uppercase;
+  }
+
+  .hint{
+    position:fixed; bottom:200px; left:50%; transform:translateX(-50%);
+    font-size:11px; color:var(--text-lo); text-align:center; letter-spacing:.03em;
+    max-width:280px;
+  }
+
+  .dash-btn{
+    position:fixed; bottom:230px; right:32px;
+    width:72px; height:72px; border-radius:50%;
+    background:radial-gradient(circle, rgba(255,201,74,0.9), rgba(255,201,74,0.25));
+    border:2px solid rgba(255,201,74,0.6);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:11px; letter-spacing:.05em;
+    color:#3A2400; text-shadow:none;
+    pointer-events:auto; touch-action:none; cursor:pointer; user-select:none;
+    box-shadow:0 0 20px rgba(255,201,74,0.5);
+    transition:opacity .15s, transform .1s;
+  }
+  .dash-btn:active{transform:scale(0.92);}
+  .dash-btn.cooldown{
+    opacity:0.35; pointer-events:none;
+    background:radial-gradient(circle, rgba(120,130,150,0.5), rgba(120,130,150,0.15));
+    border-color:rgba(120,130,150,0.4);
+  }
+  .dash-btn .cd-num{font-size:20px; font-family:'JetBrains Mono',monospace;}
+
+  .shield-btn{
+    position:fixed; bottom:230px; left:32px;
+    width:72px; height:72px; border-radius:50%;
+    background:radial-gradient(circle, rgba(90,180,255,0.9), rgba(90,180,255,0.25));
+    border:2px solid rgba(90,180,255,0.6);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:13px; letter-spacing:.04em;
+    color:#062038; text-shadow:none;
+    pointer-events:auto; touch-action:none; cursor:pointer; user-select:none;
+    box-shadow:0 0 20px rgba(90,180,255,0.5);
+    transition:opacity .15s, transform .1s;
+  }
+  .shield-btn:active{transform:scale(0.92);}
+  .shield-btn.cooldown{
+    opacity:0.35; pointer-events:none;
+    background:radial-gradient(circle, rgba(120,130,150,0.5), rgba(120,130,150,0.15));
+    border-color:rgba(120,130,150,0.4);
+  }
+
+  .winscreen{
+    position:fixed; inset:0; background:rgba(4,7,14,0.88);
+    display:none; align-items:center; justify-content:center; flex-direction:column; gap:14px;
+    pointer-events:auto; z-index:20;
+  }
+  .winscreen.show{display:flex;}
+  .winscreen .big{font-size:34px; font-weight:700; letter-spacing:.04em;}
+  .winscreen button{
+    font-family:'Rajdhani',sans-serif; font-weight:600; font-size:14px; letter-spacing:.05em;
+    background:var(--team-you); color:#04241F; border:none; border-radius:8px;
+    padding:12px 26px; cursor:pointer;
+  }
+
+  .rotate-overlay{
+    position:fixed; inset:0; background:var(--void);
+    display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px;
+    z-index:50; text-align:center; padding:30px; color:var(--text-hi);
+  }
+  @media (orientation: portrait) and (max-aspect-ratio: 1/1){
+    .rotate-overlay{display:flex;}
+  }
+  .rotate-icon{font-size:44px; animation:tilt 1.6s ease-in-out infinite;}
+  @keyframes tilt{
+    0%,100%{transform:rotate(0deg);}
+    50%{transform:rotate(90deg);}
+  }
+  .rotate-overlay .big{font-size:16px; font-weight:600; letter-spacing:.04em;}
+  .rotate-overlay .small{font-size:12px; color:var(--text-lo); max-width:260px;}
+
+  /* ---------------- Main menu ---------------- */
+  #gameHud{display:none;}
+  #gameHud.show{display:contents;}
+
+  .menu-screen{
+    position:fixed; inset:0; z-index:30;
+    display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(180deg, rgba(5,8,15,0.12), rgba(4,6,12,0.32));
+    pointer-events:auto;
+  }
+  .menu-card{
+    width:min(420px, 90vw); max-height:82vh; overflow-y:auto;
+    background:rgba(9,13,22,0.4); border:1px solid var(--hairline); border-radius:16px;
+    padding:26px 24px; backdrop-filter:blur(4px);
+    box-shadow:0 20px 60px rgba(0,0,0,0.35);
+  }
+  .menu-title{
+    font-size:30px; font-weight:700; letter-spacing:.1em; color:var(--text-hi);
+    text-shadow:0 0 16px rgba(255,61,224,0.5); text-align:center; margin-bottom:2px;
+  }
+  .menu-subtitle{
+    font-size:11px; color:var(--text-lo); text-align:center; letter-spacing:.06em;
+    text-transform:uppercase; margin-bottom:22px;
+  }
+  .menu-nav{display:flex; flex-direction:column; gap:10px;}
+  .menu-btn{
+    font-family:'Rajdhani',sans-serif; font-weight:600; font-size:16px; letter-spacing:.04em;
+    background:rgba(61,214,208,0.12); border:1px solid rgba(61,214,208,0.35); color:var(--text-hi);
+    border-radius:10px; padding:14px 18px; text-align:left; cursor:pointer;
+    display:flex; justify-content:space-between; align-items:center;
+    transition:background .15s;
+  }
+  .menu-btn:active{background:rgba(61,214,208,0.28);}
+  .menu-btn .arrow{color:var(--team-you); font-size:14px;}
+  .menu-btn.primary{background:rgba(61,214,208,0.9); color:#04241F;}
+  .menu-btn.primary .arrow{color:#04241F;}
+  .menu-btn.disabled{opacity:0.45; cursor:default;}
+  .menu-btn.disabled .arrow{color:var(--text-lo);}
+
+  .menu-toggle-row{
+    display:flex; align-items:center; gap:10px; margin-top:16px;
+    padding:12px 14px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid var(--hairline);
+    cursor:pointer; user-select:none;
+  }
+  .menu-toggle-row input{
+    width:18px; height:18px; accent-color: var(--team-you); cursor:pointer;
+  }
+  .menu-toggle-row span{font-size:13px; color:var(--text-hi); letter-spacing:.02em;}
+
+  .menu-back{
+    font-size:12px; color:var(--team-you); letter-spacing:.05em; margin-bottom:16px;
+    cursor:pointer; display:inline-block;
+  }
+  .menu-panel{display:none;}
+  .menu-panel.show{display:block;}
+  .menu-panel h3{font-size:15px; margin-bottom:10px; letter-spacing:.03em;}
+  .faq-item{margin-bottom:14px;}
+  .faq-q{font-size:13.5px; font-weight:600; color:var(--team-you); margin-bottom:3px;}
+  .faq-a{font-size:12.5px; color:var(--text-lo); line-height:1.5;}
+
+  .mode-toggle{display:flex; gap:8px; margin-bottom:16px;}
+  .mode-btn{
+    flex:1; text-align:center; padding:10px; border-radius:8px; cursor:pointer;
+    border:1px solid var(--hairline); font-weight:600; font-size:13px; letter-spacing:.04em;
+    color:var(--text-lo); background:rgba(255,255,255,0.03);
+  }
+  .mode-btn.active{background:rgba(61,214,208,0.9); color:#04241F; border-color:transparent;}
+  .mode-desc{font-size:12.5px; color:var(--text-lo); line-height:1.6;}
+
+  .mp-code{
+    font-family:'JetBrains Mono',monospace; font-size:30px; font-weight:600; letter-spacing:.08em;
+    color:var(--team-you); text-align:center; background:rgba(61,214,208,0.1);
+    border:1px solid rgba(61,214,208,0.35); border-radius:10px; padding:14px; margin:10px 0 14px;
+  }
+  .mp-code-input{
+    width:100%; font-family:'JetBrains Mono',monospace; font-size:22px; letter-spacing:.1em;
+    text-align:center; background:rgba(255,255,255,0.05); border:1px solid var(--hairline);
+    border-radius:10px; padding:12px; color:var(--text-hi); margin-top:8px;
+  }
+  .mp-waiting{
+    margin-top:16px; display:flex; align-items:center; justify-content:center; gap:10px;
+    font-size:12.5px; color:var(--text-lo);
+  }
+  .mp-spinner{
+    width:14px; height:14px; border-radius:50%;
+    border:2px solid rgba(61,214,208,0.25); border-top-color:var(--team-you);
+    animation:mpSpin 0.8s linear infinite;
+  }
+  @keyframes mpSpin{ to{ transform:rotate(360deg); } }
+  .mode-desc b{color:var(--text-hi);}
+
+  .menu-open-btn{
+    position:fixed; top:16px; left:16px; z-index:15;
+    width:42px; height:42px; border-radius:10px;
+    background:rgba(9,13,22,0.75); border:1px solid var(--hairline);
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; color:var(--text-hi); cursor:pointer; pointer-events:auto;
+    backdrop-filter:blur(6px);
+  }
+  .menu-open-btn:active{background:rgba(61,214,208,0.25);}
+
+  .toast{
+    position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+    background:rgba(9,13,22,0.92); border:1px solid var(--hairline); color:var(--text-hi);
+    padding:10px 18px; border-radius:8px; font-size:12.5px; letter-spacing:.03em;
+    opacity:0; transition:opacity .25s; pointer-events:none; z-index:40;
+  }
+  .toast.show{opacity:1;}
+
+  .fpv-reticle{
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:70px; height:70px; z-index:12; pointer-events:none;
+    display:none;
+  }
+  .fpv-reticle.show{display:block;}
+  .fpv-dot{
+    position:absolute; top:50%; left:50%; width:5px; height:5px; border-radius:50%;
+    background:#3DD6D0; transform:translate(-50%,-50%);
+    box-shadow:0 0 6px rgba(61,214,208,0.9);
+  }
+  .fpv-circle{
+    position:absolute; inset:14px; border:2px solid rgba(61,214,208,0.85);
+    border-radius:50%; box-shadow:0 0 8px rgba(61,214,208,0.5);
+  }
+  .fpv-line{position:absolute; background:rgba(61,214,208,0.85); box-shadow:0 0 6px rgba(61,214,208,0.6);}
+  .fpv-line-top{top:0; left:50%; width:2px; height:12px; transform:translateX(-50%);}
+  .fpv-line-bottom{bottom:0; left:50%; width:2px; height:12px; transform:translateX(-50%);}
+  .fpv-line-left{left:0; top:50%; width:12px; height:2px; transform:translateY(-50%);}
+  .fpv-line-right{right:0; top:50%; width:12px; height:2px; transform:translateY(-50%);}
+</style>
+</head>
+<body>
+
+<div id="scene"></div>
+<div class="vignette"></div>
+
+<div id="gameHud">
+<div class="menu-open-btn" id="menuOpenBtn">☰</div>
+<div class="hud">
+  <div class="topbar">
+    <div>
+      <div class="title">SKYLURE</div>
+      <div class="subtitle">Поймай светящуюся приманку раньше соперника</div>
+    </div>
+    <div class="scoreboard">
+      <div class="score-chip you">
+        <div class="label">Ты</div>
+        <div class="value" id="scoreYou">0</div>
+      </div>
+      <div class="score-chip ai">
+        <div class="label">Дрон-соперник</div>
+        <div class="value" id="scoreAI">0</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="banner" id="banner">ПОЙМАНО!</div>
+
+<div class="dash-btn" id="dashBtn">РЫВОК</div>
+<div class="shield-btn" id="shieldBtn">ЩИТ</div>
+
+<div class="joystick-zone" id="joyLeft">
+  <div class="joystick-nub" id="nubLeft"></div>
+  <div class="joystick-label" id="labelLeft">Газ / разворот</div>
+</div>
+<div class="joystick-zone" id="joyRight">
+  <div class="joystick-nub" id="nubRight"></div>
+  <div class="joystick-label" id="labelRight">Наклон / стрейф</div>
+</div>
+
+<div class="winscreen" id="winscreen">
+  <div class="big" id="winText">ПОБЕДА</div>
+  <button onclick="restartWithCountdown()">Играть снова</button>
+</div>
+
+<div class="fpv-reticle" id="fpvReticle">
+  <div class="fpv-dot"></div>
+  <div class="fpv-line fpv-line-top"></div>
+  <div class="fpv-line fpv-line-bottom"></div>
+  <div class="fpv-line fpv-line-left"></div>
+  <div class="fpv-line fpv-line-right"></div>
+  <div class="fpv-circle"></div>
+</div>
+</div><!-- /#gameHud -->
+
+<div class="countdown-overlay" id="countdownOverlay">
+  <div class="countdown-number" id="countdownNumber">3</div>
+</div>
+
+<div class="rotate-overlay" id="rotateOverlay">
+  <div class="rotate-icon">📱</div>
+  <div class="big">Поверни телефон боком</div>
+  <div class="small">Игра рассчитана на альбомную ориентацию — так гораздо лучше видно арену</div>
+</div>
+
+<!-- ---------------- Main menu ---------------- -->
+<div class="menu-screen" id="menuScreen">
+  <div class="menu-card">
+
+    <div class="menu-panel show" id="panelMain">
+      <div class="menu-title">SKYLURE</div>
+      <div class="menu-subtitle">Мяч, дроны и погоня по горной арене</div>
+      <div class="menu-nav">
+        <div class="menu-btn primary" id="btnStart">СТАРТ ИГРЫ <span class="arrow">▶</span></div>
+        <div class="menu-btn" id="btnRestart" style="display:none;">ПЕРЕЗАПУСК МАТЧА <span class="arrow">▶</span></div>
+        <div class="menu-btn" id="btnControls">УПРАВЛЕНИЕ <span class="arrow">▶</span></div>
+        <div class="menu-btn" id="btnFaq">FAQ <span class="arrow">▶</span></div>
+        <div class="menu-btn" id="btnMultiplayer">МУЛЬТИПЛЕЕР <span class="arrow">▶</span></div>
+        <div class="menu-btn" id="btnExit">ВЫХОД <span class="arrow">▶</span></div>
+      </div>
+      <div class="menu-btn" id="btnFullscreen" style="margin-top:10px; justify-content:center;">⛶ ПОЛНЫЙ ЭКРАН</div>
+      <div class="menu-toggle-row" style="cursor:default; flex-direction:column; align-items:stretch; gap:6px;">
+        <span>🔊 Громкость</span>
+        <input type="range" id="volumeSlider" min="0" max="100" value="85" style="width:100%; accent-color: var(--team-you); cursor:pointer;">
+      </div>
+      <label class="menu-toggle-row" for="hintsCheckbox">
+        <input type="checkbox" id="hintsCheckbox" checked>
+        <span>Показывать подсказки для новичков</span>
+      </label>
+    </div>
+
+    <div class="menu-panel" id="panelControls">
+      <div class="menu-back" id="backFromControls">← Назад</div>
+      <h3>Вид камеры</h3>
+      <div class="mode-toggle">
+        <div class="mode-btn active" id="btnViewThird">3-Е ЛИЦО</div>
+        <div class="mode-btn" id="btnViewFpv">FPV (1-Е ЛИЦО)</div>
+      </div>
+      <div class="mode-desc" style="margin-bottom:20px;">
+        <b>3-е лицо</b> — камера следует за дроном сзади, хорошо видно всё вокруг.<br><br>
+        <b>FPV</b> — камера сидит прямо в носу дрона, как на настоящих FPV-очках, с прицелом по центру экрана.
+      </div>
+      <h3>Схема управления</h3>
+      <div class="mode-toggle">
+        <div class="mode-btn active" id="btnMode1">MODE 1</div>
+        <div class="mode-btn" id="btnMode2">MODE 2</div>
+      </div>
+      <div class="mode-desc" id="modeDesc" style="margin-bottom:20px;"></div>
+      <h3>Способности</h3>
+      <div class="mode-desc">
+        <b>РЫВОК</b> (справа) — резкий бросок вперёд. Кулдаун 2.5 сек. Помогает и в погоне, и в отборе мяча.<br><br>
+        <b>ЩИТ</b> (слева) — защитная способность на 0.7 сек. Используй её, когда соперник несёт мяч к <b>твоим</b> воротам — если коснёшься его в радиусе щита, мяч выбьется у него из рук и улетит с ускорением. Кулдаун 4.5 сек.
+      </div>
+    </div>
+
+    <div class="menu-panel" id="panelFaq">
+      <div class="menu-back" id="backFromFaq">← Назад</div>
+      <h3>FAQ</h3>
+      <div class="faq-item">
+        <div class="faq-q">Как забить гол?</div>
+        <div class="faq-a">Коснись приманки — она прилипнет к твоему дрону. Долети до колец СОПЕРНИКА (не своих!), чтобы засчитать очко. Кольца физические — можно врезаться в саму трубу, поэтому цель нужно ловить именно в отверстие.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Как отобрать приманку у соперника?</div>
+        <div class="faq-a">Подлети близко и в этот момент нажми РЫВОК — приманка перейдёт к тебе. Отобрать можно и просто врезавшись в соперника, который её несёт.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Для чего нужен ЩИТ?</div>
+        <div class="faq-a">Это защита твоих ворот. Если соперник подобрал приманку и летит забивать тебе гол — включи ЩИТ и подлети вплотную: приманка выбьется у него из рук и улетит в сторону с ускорением, атака сорвётся.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Что такое золотой шар?</div>
+        <div class="faq-a">Маленький пурпурный шар, который держится у краёв карты. Поймавший его побеждает мгновенно, независимо от счёта. При приближении любого дрона он делает 3 быстрых рывка подряд, а затем ненадолго слабеет — вот тогда его и можно поймать.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Сколько очков нужно для победы?</div>
+        <div class="faq-a">5 голов через кольца соперника — либо один пойманный золотой шар в любой момент матча.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Что будет, если врезаться в дерево, гору или границу арены?</div>
+        <div class="faq-a">Потеряешь скорость и погасишь инерцию — деревья и границы арены физически блокируют полёт. На пути к каждому кольцу есть ровно одно такое дерево-препятствие. Приманка тоже отскакивает от деревьев, если летит без хозяина.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Можно ли играть от первого лица?</div>
+        <div class="faq-a">Да — в разделе «Управление» включи FPV: камера встанет в нос дрона, появится прицел, как на настоящих FPV-очках.</div>
+      </div>
+    </div>
+
+    <div class="menu-panel" id="panelMultiplayer">
+      <div class="menu-back" id="backFromMultiplayer">← Назад</div>
+      <h3>Мультиплеер</h3>
+
+      <div id="mpChoice">
+        <div class="menu-nav">
+          <div class="menu-btn" id="btnMpCreate">СОЗДАТЬ СЕРВЕР <span class="arrow">▶</span></div>
+          <div class="menu-btn" id="btnMpJoin">ПОДКЛЮЧИТЬСЯ <span class="arrow">▶</span></div>
+        </div>
+        <div class="mode-desc" style="margin-top:16px;">
+          Один игрок создаёт сервер и получает код — второй вводит этот код, чтобы подключиться. Матч начнётся, как только оба будут на связи.
+        </div>
+      </div>
+
+      <div id="mpCreateView" style="display:none;">
+        <div class="mode-desc">Отправь этот код второму игроку:</div>
+        <div class="mp-code" id="mpCodeDisplay">----------</div>
+        <div class="menu-btn" id="btnMpCopyCode" style="justify-content:center;">📋 СКОПИРОВАТЬ КОД</div>
+        <div class="mp-waiting" id="mpWaitingBanner">
+          <span class="mp-spinner"></span> Ожидание подключения игрока…
+        </div>
+      </div>
+
+      <div id="mpJoinView" style="display:none;">
+        <div class="mode-desc">Введи код сервера:</div>
+        <input type="text" id="mpCodeInput" class="mp-code-input" maxlength="10" inputmode="numeric" placeholder="0000000000">
+        <div class="menu-btn primary" id="btnMpConnect" style="justify-content:center; margin-top:10px;">ПОДКЛЮЧИТЬСЯ</div>
+        <div class="mp-waiting" id="mpJoinStatus" style="display:none;">
+          <span class="mp-spinner"></span> <span id="mpJoinStatusText">Подключение…</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script>
+// Try to lock landscape orientation (works mainly when added to home screen as a standalone app)
+if(screen.orientation && screen.orientation.lock){
+  screen.orientation.lock('landscape').catch(()=>{ /* not supported in this context, overlay handles it instead */ });
+}
+
+// ---------------- Audio: synthesized engine hum, wind ambience, and goal chime ----------------
+// No external sound files — everything is generated live with the Web Audio API.
+let audioCtx = null;
+let masterGain = null;
+let masterVolume = 0.85;
+let engineOsc1, engineOsc2, engineOsc3, engineOsc4, engineGain, engineFilter;
+let engineOsc1B, engineOsc2B, engineOsc3B, engineOsc4B, engineGainB, engineFilterB;
+let windNoiseSource, windGain, windFilter;
+let audioReady = false;
+
+function initAudio(){
+  if(audioReady) return;
+  audioReady = true;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = masterVolume;
+  masterGain.connect(audioCtx.destination);
+
+  // Drone engine — heavy, metallic, aggressive: ring modulation for a robotic/metal edge,
+  // hard waveshaper distortion, and four layered oscillators for a screaming high end.
+  function makeDistortionCurve(amount){
+    const n = 512;
+    const curve = new Float32Array(n);
+    for(let i=0;i<n;i++){
+      const x = (i*2)/n - 1;
+      curve[i] = Math.tanh(x*amount) * 0.9;
+    }
+    return curve;
+  }
+  const engineDrive = audioCtx.createWaveShaper();
+  engineDrive.curve = makeDistortionCurve(22);
+  const engineDrive2 = audioCtx.createWaveShaper();
+  engineDrive2.curve = makeDistortionCurve(9); // second softer clip stage for extra crunch
+  engineFilter = audioCtx.createBiquadFilter();
+  engineFilter.type = 'lowpass';
+  engineFilter.frequency.value = 6500;
+
+  // Ring modulator — a carrier oscillator multiplies the signal for that metallic/robotic snarl
+  const ringMod = audioCtx.createGain();
+  ringMod.gain.value = 0;
+  const ringCarrier = audioCtx.createOscillator();
+  ringCarrier.type = 'sine';
+  ringCarrier.frequency.value = 95;
+  ringCarrier.connect(ringMod.gain);
+  ringCarrier.start();
+
+  engineGain = audioCtx.createGain();
+  engineGain.gain.value = 0.0001;
+  engineOsc1 = audioCtx.createOscillator();
+  engineOsc1.type = 'sawtooth';
+  engineOsc1.frequency.value = 560;
+  engineOsc2 = audioCtx.createOscillator();
+  engineOsc2.type = 'sawtooth';
+  engineOsc2.frequency.value = 582;
+  engineOsc3 = audioCtx.createOscillator();
+  engineOsc3.type = 'square';
+  engineOsc3.frequency.value = 1400;
+  engineOsc4 = audioCtx.createOscillator();
+  engineOsc4.type = 'square';
+  engineOsc4.frequency.value = 2100;
+  // A faster, deeper LFO wobbling the pitch gives the motor a snarling growl instead of a flat tone
+  const engineLFO = audioCtx.createOscillator();
+  engineLFO.type = 'sine';
+  engineLFO.frequency.value = 22;
+  const engineLFOGain = audioCtx.createGain();
+  engineLFOGain.gain.value = 14;
+  engineLFO.connect(engineLFOGain);
+  engineLFOGain.connect(engineOsc1.frequency);
+  engineLFOGain.connect(engineOsc2.frequency);
+  engineLFOGain.connect(engineOsc3.frequency);
+  engineLFO.start();
+  engineOsc1.connect(ringMod);
+  engineOsc2.connect(ringMod);
+  engineOsc3.connect(ringMod);
+  engineOsc4.connect(ringMod);
+  ringMod.connect(engineDrive);
+  engineDrive.connect(engineDrive2);
+  engineDrive2.connect(engineFilter);
+  engineFilter.connect(engineGain);
+  engineGain.connect(masterGain);
+  engineOsc1.start();
+  engineOsc2.start();
+  engineOsc3.start();
+  engineOsc4.start();
+
+  // Second engine layer — same chain, slightly detuned/offset, mixed underneath the first.
+  // Real drones have multiple motors that never sound perfectly in unison; layering two
+  // slightly-mismatched copies creates natural beating/phasing instead of one flat tone.
+  const engineDriveB = audioCtx.createWaveShaper();
+  engineDriveB.curve = makeDistortionCurve(22);
+  const engineDrive2B = audioCtx.createWaveShaper();
+  engineDrive2B.curve = makeDistortionCurve(9);
+  engineFilterB = audioCtx.createBiquadFilter();
+  engineFilterB.type = 'lowpass';
+  engineFilterB.frequency.value = 6500;
+
+  const ringModB = audioCtx.createGain();
+  ringModB.gain.value = 0;
+  const ringCarrierB = audioCtx.createOscillator();
+  ringCarrierB.type = 'sine';
+  ringCarrierB.frequency.value = 88;
+  ringCarrierB.connect(ringModB.gain);
+  ringCarrierB.start();
+
+  engineGainB = audioCtx.createGain();
+  engineGainB.gain.value = 0.0001;
+  engineOsc1B = audioCtx.createOscillator();
+  engineOsc1B.type = 'sawtooth';
+  engineOsc1B.frequency.value = 568;
+  engineOsc2B = audioCtx.createOscillator();
+  engineOsc2B.type = 'sawtooth';
+  engineOsc2B.frequency.value = 575;
+  engineOsc3B = audioCtx.createOscillator();
+  engineOsc3B.type = 'square';
+  engineOsc3B.frequency.value = 1418;
+  engineOsc4B = audioCtx.createOscillator();
+  engineOsc4B.type = 'square';
+  engineOsc4B.frequency.value = 2085;
+  const engineLFOB = audioCtx.createOscillator();
+  engineLFOB.type = 'sine';
+  engineLFOB.frequency.value = 19;
+  const engineLFOGainB = audioCtx.createGain();
+  engineLFOGainB.gain.value = 14;
+  engineLFOB.connect(engineLFOGainB);
+  engineLFOGainB.connect(engineOsc1B.frequency);
+  engineLFOGainB.connect(engineOsc2B.frequency);
+  engineLFOGainB.connect(engineOsc3B.frequency);
+  engineLFOB.start();
+  engineOsc1B.connect(ringModB);
+  engineOsc2B.connect(ringModB);
+  engineOsc3B.connect(ringModB);
+  engineOsc4B.connect(ringModB);
+  ringModB.connect(engineDriveB);
+  engineDriveB.connect(engineDrive2B);
+  engineDrive2B.connect(engineFilterB);
+  engineFilterB.connect(engineGainB);
+  engineGainB.connect(masterGain);
+  engineOsc1B.start();
+  engineOsc2B.start();
+  engineOsc3B.start();
+  engineOsc4B.start();
+
+  // Ambient wind — a filtered noise loop, quiet and constant, just to keep the world from feeling silent
+  const bufferSize = audioCtx.sampleRate * 2;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+  windNoiseSource = audioCtx.createBufferSource();
+  windNoiseSource.buffer = noiseBuffer;
+  windNoiseSource.loop = true;
+  windFilter = audioCtx.createBiquadFilter();
+  windFilter.type = 'lowpass';
+  windFilter.frequency.value = 500;
+  windGain = audioCtx.createGain();
+  windGain.gain.value = 0.05;
+  windNoiseSource.connect(windFilter);
+  windFilter.connect(windGain);
+  windGain.connect(masterGain);
+  windNoiseSource.start();
+}
+
+function setMasterVolume(v){
+  masterVolume = v;
+  if(masterGain) masterGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.05);
+}
+
+function updateEngineSound(speed, dashing, volumeMult){
+  if(!audioReady) return;
+  const vol = volumeMult === undefined ? 1 : volumeMult;
+  const clamped = Math.min(speed, 50);
+  const dashMult = dashing ? 1.6 : 1;
+  const targetFreq = (900 + clamped*30) * (dashing ? 1.3 : 1);
+  const baseGain = clamped < 0.3 ? 0.0001 : 0.09 + Math.min(0.16, clamped*0.005);
+  const targetGain = Math.min(0.4, baseGain * dashMult) * 0.49 * vol;
+  const now = audioCtx.currentTime;
+  engineOsc1.frequency.setTargetAtTime(targetFreq, now, 0.0133);
+  engineOsc2.frequency.setTargetAtTime(targetFreq*1.04, now, 0.0133);
+  engineOsc3.frequency.setTargetAtTime(targetFreq*3, now, 0.0133);
+  engineOsc4.frequency.setTargetAtTime(targetFreq*4.5, now, 0.0133);
+  engineGain.gain.setTargetAtTime(targetGain, now, 0.05);
+  engineFilter.frequency.setTargetAtTime((8500+clamped*55) * (dashing ? 1.2 : 1), now, 0.03);
+
+  // Second layer — detuned slightly (~1.5%) so it beats against the first instead of doubling
+  // it exactly, giving the sense of a second motor rather than one louder copy.
+  const targetFreqB = targetFreq * 1.015;
+  engineOsc1B.frequency.setTargetAtTime(targetFreqB, now, 0.0133);
+  engineOsc2B.frequency.setTargetAtTime(targetFreqB*1.035, now, 0.0133);
+  engineOsc3B.frequency.setTargetAtTime(targetFreqB*3, now, 0.0133);
+  engineOsc4B.frequency.setTargetAtTime(targetFreqB*4.5, now, 0.0133);
+  engineGainB.gain.setTargetAtTime(targetGain*0.75, now, 0.05);
+  engineFilterB.frequency.setTargetAtTime((8500+clamped*55) * (dashing ? 1.2 : 1), now, 0.03);
+}
+
+function playGoalChime(){
+  if(!audioReady) return;
+  const now = audioCtx.currentTime;
+  [523.25, 659.25, 783.99].forEach((freq,i)=>{
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, now+i*0.09);
+    gain.gain.linearRampToValueAtTime(0.22, now+i*0.09+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now+i*0.09+0.35);
+    osc.connect(gain);
+    gain.connect(masterGain);
+    osc.start(now+i*0.09);
+    osc.stop(now+i*0.09+0.4);
+  });
+}
+
+function playTreeThud(impactSpeed){
+  if(!audioReady) return;
+  const now = audioCtx.currentTime;
+  const vol = Math.min(0.55, 0.18 + impactSpeed*0.012);
+  // Low thumping tone dropping in pitch — the "body" of the impact
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(130, now);
+  osc.frequency.exponentialRampToValueAtTime(32, now+0.14);
+  const oscGain = audioCtx.createGain();
+  oscGain.gain.setValueAtTime(vol, now);
+  oscGain.gain.exponentialRampToValueAtTime(0.001, now+0.2);
+  osc.connect(oscGain); oscGain.connect(masterGain);
+  osc.start(now); osc.stop(now+0.22);
+  // Filtered noise burst for a duller "wood knock" texture
+  const bufferSize = Math.floor(audioCtx.sampleRate*0.1);
+  const buffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'lowpass';
+  noiseFilter.frequency.value = 350;
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(vol*0.7, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now+0.11);
+  noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(masterGain);
+  noise.start(now); noise.stop(now+0.12);
+}
+
+function playCountdownBeep(index){
+  if(!audioReady) return;
+  const now = audioCtx.currentTime;
+  const freqs = [440, 554.37, 659.25];
+  const osc = audioCtx.createOscillator();
+  osc.type = 'square';
+  osc.frequency.value = freqs[index] || 440;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.linearRampToValueAtTime(0.28, now+0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now+0.25);
+  osc.connect(gain); gain.connect(masterGain);
+  osc.start(now); osc.stop(now+0.28);
+}
+
+function playCountdownGo(){
+  if(!audioReady) return;
+  const now = audioCtx.currentTime;
+  [880, 1108.73, 1318.51].forEach((f,i)=>{
+    const osc = audioCtx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = f;
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.0001, now+i*0.035);
+    gain.gain.linearRampToValueAtTime(0.32, now+i*0.035+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now+i*0.035+0.45);
+    osc.connect(gain); gain.connect(masterGain);
+    osc.start(now+i*0.035); osc.stop(now+i*0.035+0.48);
+  });
+}
+
+// ---------------- Menu music: original 8-bit-style drum & bass loop ----------------
+// Not a cover of anything — just fast, driving chiptune energy for the menu screen.
+let musicGain = null;
+let musicPlaying = false;
+let musicNextStepTime = 0;
+let musicStep = 0;
+let musicSchedulerId = null;
+const MUSIC_BPM = 172;
+const MUSIC_STEP_DUR = 60/MUSIC_BPM/4; // 16th notes
+
+const kickPattern  = [1,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,1,0];
+const snarePattern = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,1,0];
+const hihatPattern = [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1];
+// Original bassline, NES-square-wave style — driving eighth notes, not borrowed from any existing song
+const bassPattern  = [110,0,110,110, 0,110,0,110, 130.81,0,130.81,130.81, 0,98,0,110];
+const leadPattern  = [0,0,0,440, 0,0,523.25,0, 0,0,0,392, 0,466.16,0,0];
+
+function playKick(time){
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(150, time);
+  osc.frequency.exponentialRampToValueAtTime(40, time+0.1);
+  gain.gain.setValueAtTime(0.9, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+0.15);
+  osc.connect(gain); gain.connect(musicGain);
+  osc.start(time); osc.stop(time+0.16);
+}
+function playSnare(time){
+  const bufferSize = Math.floor(audioCtx.sampleRate*0.15);
+  const buffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'highpass'; filter.frequency.value = 1000;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.45, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+0.13);
+  noise.connect(filter); filter.connect(gain); gain.connect(musicGain);
+  noise.start(time); noise.stop(time+0.15);
+}
+function playHihat(time, vel){
+  const bufferSize = Math.floor(audioCtx.sampleRate*0.05);
+  const buffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'highpass'; filter.frequency.value = 6000;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.16*vel, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+0.04);
+  noise.connect(filter); filter.connect(gain); gain.connect(musicGain);
+  noise.start(time); noise.stop(time+0.05);
+}
+function playChipNote(freq, time, dur, vol){
+  const osc = audioCtx.createOscillator();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(vol, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+dur);
+  osc.connect(gain); gain.connect(musicGain);
+  osc.start(time); osc.stop(time+dur+0.02);
+}
+
+function scheduleMusicStep(step, time){
+  if(kickPattern[step]) playKick(time);
+  if(snarePattern[step]) playSnare(time);
+  if(hihatPattern[step]) playHihat(time, step%4===0 ? 1 : 0.55);
+  if(bassPattern[step]) playChipNote(bassPattern[step], time, MUSIC_STEP_DUR*1.7, 0.16);
+  if(leadPattern[step]) playChipNote(leadPattern[step], time, MUSIC_STEP_DUR*1.1, 0.11);
+}
+
+function musicScheduler(){
+  while(musicNextStepTime < audioCtx.currentTime + 0.12){
+    scheduleMusicStep(musicStep, musicNextStepTime);
+    musicNextStepTime += MUSIC_STEP_DUR;
+    musicStep = (musicStep+1) % 16;
+  }
+}
+
+function startMenuMusic(){
+  if(!audioReady || musicPlaying) return;
+  musicPlaying = true;
+  musicGain = audioCtx.createGain();
+  musicGain.gain.value = 0.001;
+  musicGain.connect(masterGain);
+  musicGain.gain.setTargetAtTime(0.55, audioCtx.currentTime, 0.3);
+  musicStep = 0;
+  musicNextStepTime = audioCtx.currentTime + 0.05;
+  musicSchedulerId = setInterval(musicScheduler, 25);
+}
+function stopMenuMusic(){
+  if(!musicPlaying) return;
+  musicPlaying = false;
+  clearInterval(musicSchedulerId);
+  const g = musicGain;
+  if(g){ g.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.15); setTimeout(()=>g.disconnect(), 500); }
+}
+
+// ---------------- Menu state ----------------
+let gameStarted = false;
+let paused = false;
+let controlMode = 'mode1'; // 'mode1' | 'mode2'
+let cameraView = 'third'; // 'third' | 'fpv'
+let menuHolder = null; // who's "carrying" the ball in the menu background animation (null = loose)
+let menuDashTimer = 1;
+let menuBallTarget = new THREE.Vector3(0, 8, 0);
+let menuBallVel = new THREE.Vector3();
+let menuBallRetarget = 0.1;
+let menuWobble = [new THREE.Vector3(), new THREE.Vector3()];
+let menuWobbleRetarget = 0.1;
+let menuBallHangUntil = 0;
+let showHints = true;
+
+const hintsCheckbox = document.getElementById('hintsCheckbox');
+hintsCheckbox.addEventListener('change', ()=>{
+  showHints = hintsCheckbox.checked;
+});
+
+function showToast(text){
+  const t = document.getElementById('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+const modeDescriptions = {
+  mode1: `<b>MODE 1</b> (классика авиамоделизма)<br><br>
+    <b>Левый стик</b> — наклон вперёд/назад (вверх/вниз) и разворот (влево/вправо)<br><br>
+    <b>Правый стик</b> — газ, высота (вверх/вниз) и стрейф вбок (влево/вправо)`,
+  mode2: `<b>MODE 2</b> (стандарт DJI и большинства дронов)<br><br>
+    <b>Левый стик</b> — газ, высота (вверх/вниз) и разворот (влево/вправо)<br><br>
+    <b>Правый стик</b> — наклон вперёд/назад (вверх/вниз) и стрейф вбок (влево/вправо)`
+};
+
+function setControlMode(mode){
+  controlMode = mode;
+  document.getElementById('btnMode1').classList.toggle('active', mode==='mode1');
+  document.getElementById('btnMode2').classList.toggle('active', mode==='mode2');
+  document.getElementById('modeDesc').innerHTML = modeDescriptions[mode];
+  const labelLeft = document.getElementById('labelLeft');
+  const labelRight = document.getElementById('labelRight');
+  if(mode === 'mode1'){
+    labelLeft.textContent = 'Наклон / разворот';
+    labelRight.textContent = 'Газ / стрейф';
+  } else {
+    labelLeft.textContent = 'Газ / разворот';
+    labelRight.textContent = 'Наклон / стрейф';
+  }
+}
+setControlMode('mode2');
+
+function showMenuPanel(id){
+  document.querySelectorAll('.menu-panel').forEach(p=>p.classList.remove('show'));
+  document.getElementById(id).classList.add('show');
+}
+document.getElementById('btnControls').addEventListener('click', ()=>showMenuPanel('panelControls'));
+document.getElementById('btnFaq').addEventListener('click', ()=>showMenuPanel('panelFaq'));
+document.getElementById('backFromControls').addEventListener('click', ()=>showMenuPanel('panelMain'));
+document.getElementById('backFromFaq').addEventListener('click', ()=>showMenuPanel('panelMain'));
+document.getElementById('backFromMultiplayer').addEventListener('click', ()=>{
+  mpResetChoiceView();
+  showMenuPanel('panelMain');
+});
+document.getElementById('btnMode1').addEventListener('click', ()=>setControlMode('mode1'));
+document.getElementById('btnMode2').addEventListener('click', ()=>setControlMode('mode2'));
+
+const fpvReticle = document.getElementById('fpvReticle');
+function setCameraView(view){
+  cameraView = view;
+  document.getElementById('btnViewThird').classList.toggle('active', view==='third');
+  document.getElementById('btnViewFpv').classList.toggle('active', view==='fpv');
+  fpvReticle.classList.toggle('show', view==='fpv');
+}
+document.getElementById('btnViewThird').addEventListener('click', ()=>setCameraView('third'));
+document.getElementById('btnViewFpv').addEventListener('click', ()=>setCameraView('fpv'));
+document.getElementById('btnMultiplayer').addEventListener('click', ()=>showMenuPanel('panelMultiplayer'));
+
+// ---------------- Multiplayer: PeerJS-based peer-to-peer over WebRTC ----------------
+// One player creates a "server" (a PeerJS Peer with a random 10-digit ID), the other
+// connects directly using that code. The host runs the real simulation and streams state;
+// the joining player sends their stick/button input and renders whatever the host sends back.
+let multiplayerMode = null; // null | 'host' | 'client'
+let mpPeer = null;
+let mpConn = null;
+let remoteInput = {moveX:0, moveY:0, liftX:0, liftY:0, dash:false, shield:false};
+
+function mpResetChoiceView(){
+  document.getElementById('mpChoice').style.display = 'block';
+  document.getElementById('mpCreateView').style.display = 'none';
+  document.getElementById('mpJoinView').style.display = 'none';
+}
+
+function generateRoomCode(){
+  let code = '';
+  for(let i=0;i<10;i++) code += Math.floor(Math.random()*10);
+  return code;
+}
+
+document.getElementById('btnMpCreate').addEventListener('click', ()=>{
+  document.getElementById('mpChoice').style.display = 'none';
+  document.getElementById('mpCreateView').style.display = 'block';
+  const code = generateRoomCode();
+  document.getElementById('mpCodeDisplay').textContent = code;
+  mpPeer = new Peer(code);
+  mpPeer.on('error', err=>{ showToast('Ошибка сервера: '+err.type); });
+  mpPeer.on('connection', c=>{
+    mpConn = c;
+    multiplayerMode = 'host';
+    mpConn.on('open', ()=>{
+      mpConn.on('data', data=>{
+        if(data.type === 'input') remoteInput = data.input;
+      });
+      document.getElementById('menuScreen').style.display = 'none';
+      document.getElementById('gameHud').classList.add('show');
+      initAudio();
+      stopMenuMusic();
+      restartWithCountdown();
+      mpConn.send({type:'start'});
+    });
+  });
+});
+
+document.getElementById('btnMpCopyCode').addEventListener('click', ()=>{
+  const code = document.getElementById('mpCodeDisplay').textContent;
+  navigator.clipboard.writeText(code).then(()=>showToast('Код скопирован')).catch(()=>showToast('Не удалось скопировать — скопируй вручную'));
+});
+
+document.getElementById('btnMpJoin').addEventListener('click', ()=>{
+  document.getElementById('mpChoice').style.display = 'none';
+  document.getElementById('mpJoinView').style.display = 'block';
+});
+
+document.getElementById('btnMpConnect').addEventListener('click', ()=>{
+  const code = document.getElementById('mpCodeInput').value.trim();
+  if(code.length !== 10){ showToast('Код должен содержать 10 цифр'); return; }
+  const statusEl = document.getElementById('mpJoinStatus');
+  const statusText = document.getElementById('mpJoinStatusText');
+  statusEl.style.display = 'flex';
+  statusText.textContent = 'Подключение…';
+  mpPeer = new Peer();
+  mpPeer.on('error', err=>{ statusText.textContent = 'Не удалось подключиться (' + err.type + ')'; });
+  mpPeer.on('open', ()=>{
+    mpConn = mpPeer.connect(code);
+    mpConn.on('open', ()=>{
+      multiplayerMode = 'client';
+      statusText.textContent = 'Подключено — ждём начала матча…';
+      initAudio();
+      mpConn.on('data', data=>{
+        if(data.type === 'start'){
+          stopMenuMusic();
+          document.getElementById('menuScreen').style.display = 'none';
+          document.getElementById('gameHud').classList.add('show');
+        } else if(data.type === 'countdown'){
+          runClientCountdownVisual(data.digit);
+        } else if(data.type === 'go'){
+          document.getElementById('countdownOverlay').classList.remove('show');
+          showBanner('ПОЛЕТЕЛИ!');
+          playCountdownGo();
+          gameStarted = true;
+        } else if(data.type === 'state'){
+          applyRemoteState(data.state);
+        }
+      });
+    });
+    mpConn.on('error', ()=>{ statusText.textContent = 'Соединение прервано'; });
+  });
+});
+
+// Client-side visual for the countdown digits the host is broadcasting (host runs the real timer)
+function runClientCountdownVisual(digit){
+  const overlay = document.getElementById('countdownOverlay');
+  const numEl = document.getElementById('countdownNumber');
+  overlay.classList.add('show');
+  numEl.textContent = digit;
+  numEl.classList.remove('fall-in','fall-out');
+  void numEl.offsetWidth;
+  numEl.classList.add('fall-in');
+  playCountdownBeep(3-digit);
+  setTimeout(()=>{ numEl.classList.add('fall-out'); }, 550);
+}
+
+// Applies the host's authoritative state on the joining player's screen.
+// Note: from the client's point of view, "their" drone is aiDrone (host calls it that internally) —
+// camera/controls are relabelled locally so it still feels like controlling "your own" drone.
+function applyRemoteState(state){
+  player.position.fromArray(state.player.p);
+  player.rotation.set(state.player.r[0], state.player.r[1], state.player.r[2]);
+  aiDrone.position.fromArray(state.aiDrone.p);
+  aiDrone.rotation.set(state.aiDrone.r[0], state.aiDrone.r[1], state.aiDrone.r[2]);
+  lure.position.fromArray(state.lure.p);
+  lure.rotation.y = state.lure.ry;
+  winBall.position.fromArray(state.winBall.p);
+  winBall.scale.setScalar(state.winBall.s);
+  if(state.scoreYou !== scoreYou || state.scoreAI !== scoreAI){
+    if(state.scoreYou > scoreYou || state.scoreAI > scoreAI) playGoalChime();
+  }
+  scoreYou = state.scoreYou; scoreAI = state.scoreAI;
+  document.getElementById('scoreYou').textContent = scoreAI; // client's own score shows on the left
+  document.getElementById('scoreAI').textContent = scoreYou;
+  if(state.gameOver && !gameOver){
+    gameOver = true;
+    document.getElementById('winscreen').classList.add('show');
+    document.getElementById('winText').textContent = state.winnerIsHost ? 'СОПЕРНИК ПОБЕДИЛ' : (state.viaWinBall ? 'ТЫ ПОЙМАЛ ЗОЛОТОЙ ШАР — ПОБЕДА!' : 'ТЫ ПОЙМАЛ БОЛЬШЕ ПРИМАНОК');
+  }
+}
+const volumeSlider = document.getElementById('volumeSlider');
+setMasterVolume(volumeSlider.value/100);
+volumeSlider.addEventListener('input', ()=>setMasterVolume(volumeSlider.value/100));
+document.getElementById('btnFullscreen').addEventListener('click', ()=>{
+  if(document.fullscreenElement){
+    document.exitFullscreen();
+  } else if(document.documentElement.requestFullscreen){
+    document.documentElement.requestFullscreen().catch(()=>showToast('Браузер не разрешил полноэкранный режим'));
+  } else {
+    showToast('Этот браузер не поддерживает полноэкранный режим');
+  }
+});
+document.getElementById('btnExit').addEventListener('click', ()=>{
+  window.close();
+  setTimeout(()=>showToast('Просто закрой вкладку 🙂'), 200);
+});
+let countdownActive = false;
+function startCountdown(onComplete){
+  countdownActive = true;
+  const overlay = document.getElementById('countdownOverlay');
+  const numEl = document.getElementById('countdownNumber');
+  const digits = ['3','2','1'];
+  overlay.classList.add('show');
+  let i = 0;
+  function showNext(){
+    if(i >= digits.length){
+      overlay.classList.remove('show');
+      playCountdownGo();
+      showBanner('ПОЛЕТЕЛИ!');
+      countdownActive = false;
+      if(multiplayerMode === 'host' && mpConn && mpConn.open) mpConn.send({type:'go'});
+      onComplete();
+      return;
+    }
+    numEl.textContent = digits[i];
+    numEl.classList.remove('fall-in','fall-out');
+    void numEl.offsetWidth; // force reflow so the animation restarts for each digit
+    numEl.classList.add('fall-in');
+    playCountdownBeep(i);
+    if(multiplayerMode === 'host' && mpConn && mpConn.open) mpConn.send({type:'countdown', digit: 3-i});
+    setTimeout(()=>{ numEl.classList.add('fall-out'); }, 550);
+    i++;
+    setTimeout(showNext, 800);
+  }
+  showNext();
+}
+
+function resetMatch(){
+  player.position.set(0, 2, 30);
+  aiDrone.position.set(0, 2, -30);
+  playerVel.set(0,0,0); aiVel.set(0,0,0);
+  playerYaw = 0;
+  camera.fov = 72; camera.updateProjectionMatrix();
+  scoreYou = 0; scoreAI = 0;
+  document.getElementById('scoreYou').textContent = 0;
+  document.getElementById('scoreAI').textContent = 0;
+  carrier = null;
+  pickNewLureTarget();
+  lure.position.set(0, 10, 0);
+  winBallState = 'wander';
+  pickNewWinBallTarget();
+  winBall.position.set(0, 30, 0);
+  winBallVel.set(0,0,0);
+  document.getElementById('winscreen').classList.remove('show');
+  gameOver = false;
+}
+
+function restartWithCountdown(){
+  resetMatch();
+  startCountdown(()=>{ gameStarted = true; });
+}
+
+const menuScreenEl = document.getElementById('menuScreen');
+menuScreenEl.addEventListener('click', ()=>{
+  initAudio();
+  startMenuMusic();
+}, {once:true});
+
+document.getElementById('btnStart').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  initAudio();
+  stopMenuMusic();
+  document.getElementById('menuScreen').style.display = 'none';
+  document.getElementById('gameHud').classList.add('show');
+  if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{ /* some browsers/contexts block this — the manual button in the menu covers that case */ });
+  }
+  if(!gameStarted || gameOver){
+    restartWithCountdown();
+  } else {
+    paused = false;
+  }
+});
+
+document.getElementById('btnRestart').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  initAudio();
+  stopMenuMusic();
+  document.getElementById('menuScreen').style.display = 'none';
+  document.getElementById('gameHud').classList.add('show');
+  if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  }
+  paused = false;
+  restartWithCountdown();
+});
+
+const menuOpenBtn = document.getElementById('menuOpenBtn');
+menuOpenBtn.addEventListener('click', ()=>{
+  paused = true;
+  startMenuMusic();
+  showMenuPanel('panelMain');
+  document.getElementById('menuScreen').style.display = 'flex';
+  document.getElementById('btnRestart').style.display = (gameStarted && !gameOver) ? 'flex' : 'none';
+  const startLabel = document.getElementById('btnStart');
+  startLabel.innerHTML = gameOver ? 'НОВАЯ ИГРА <span class="arrow">▶</span>' : 'ПРОДОЛЖИТЬ <span class="arrow">▶</span>';
+});
+
+// ---------------- Joystick helper ----------------
+function makeJoystick(zoneId, nubId){
+  const zone = document.getElementById(zoneId);
+  const nub = document.getElementById(nubId);
+  let active = false, cx=0, cy=0;
+  let touchId = null;
+  const state = {x:0, y:0};
+  const radius = 56;
+
+  function start(clientX, clientY){
+    const r = zone.getBoundingClientRect();
+    cx = r.left + r.width/2; cy = r.top + r.height/2;
+    active = true;
+  }
+  function move(clientX, clientY){
+    if(!active) return;
+    let dx = clientX - cx, dy = clientY - cy;
+    const dist = Math.min(Math.hypot(dx,dy), radius);
+    const angle = Math.atan2(dy,dx);
+    dx = Math.cos(angle)*dist; dy = Math.sin(angle)*dist;
+    nub.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    state.x = dx/radius; state.y = dy/radius;
+  }
+  function end(){
+    active = false; state.x = 0; state.y = 0;
+    touchId = null;
+    nub.style.transform = 'translate(-50%,-50%)';
+  }
+
+  // Touch events — tracked by identifier so two joysticks held by two fingers never cross-talk
+  zone.addEventListener('touchstart', e=>{
+    e.preventDefault();
+    if(touchId !== null) return; // this joystick already has a finger on it
+    const t = e.changedTouches[0];
+    touchId = t.identifier;
+    start(t.clientX, t.clientY);
+    move(t.clientX, t.clientY);
+  });
+  zone.addEventListener('touchmove', e=>{
+    e.preventDefault();
+    for(let i=0;i<e.changedTouches.length;i++){
+      const t = e.changedTouches[i];
+      if(t.identifier === touchId){ move(t.clientX, t.clientY); break; }
+    }
+  });
+  function handleTouchEnd(e){
+    for(let i=0;i<e.changedTouches.length;i++){
+      if(e.changedTouches[i].identifier === touchId){ end(); break; }
+    }
+  }
+  zone.addEventListener('touchend', e=>{ e.preventDefault(); handleTouchEnd(e); });
+  zone.addEventListener('touchcancel', e=>{ e.preventDefault(); handleTouchEnd(e); });
+
+  // Mouse events (desktop testing)
+  zone.addEventListener('mousedown', e=>{ start(e.clientX,e.clientY); move(e.clientX,e.clientY);
+    const mm = ev=>move(ev.clientX,ev.clientY);
+    const mu = ()=>{ end(); window.removeEventListener('mousemove',mm); window.removeEventListener('mouseup',mu); };
+    window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu);
+  });
+
+  return state;
+}
+const moveStick = makeJoystick('joyLeft','nubLeft');
+const liftStick = makeJoystick('joyRight','nubRight');
+
+// Smoothed versions of stick input — removes the jerky/snappy feel of raw input
+const smoothMove = {x:0, y:0};
+const smoothLift = {x:0, y:0};
+function smoothStick(target, raw, dt, rate){
+  target.x += (raw.x - target.x) * Math.min(1, dt*rate);
+  target.y += (raw.y - target.y) * Math.min(1, dt*rate);
+}
+
+// ---------------- Dash button ----------------
+let dashRequested = false;
+let isDashing = false;
+let dashCooldownUntil = 0;
+const DASH_COOLDOWN = 2500; // ms
+const dashBtn = document.getElementById('dashBtn');
+function triggerDash(){
+  const now = performance.now();
+  if(now < dashCooldownUntil) return;
+  dashRequested = true;
+  dashCooldownUntil = now + DASH_COOLDOWN;
+  dashBtn.classList.add('cooldown');
+  let remaining = DASH_COOLDOWN/1000;
+  dashBtn.textContent = remaining.toFixed(1);
+  const tick = setInterval(()=>{
+    remaining -= 0.1;
+    if(remaining <= 0){
+      clearInterval(tick);
+      dashBtn.textContent = 'РЫВОК';
+      dashBtn.classList.remove('cooldown');
+    } else {
+      dashBtn.textContent = remaining.toFixed(1);
+    }
+  }, 100);
+}
+dashBtn.addEventListener('touchstart', e=>{ e.preventDefault(); triggerDash(); });
+dashBtn.addEventListener('mousedown', e=>{ e.preventDefault(); triggerDash(); });
+
+// ---------------- Shield ability ----------------
+// Briefly surrounds the drone with a knockback field: touching the big ball while a rival carries it
+// pops it loose and sends it flying with extra speed.
+let isShielding = false;
+let shieldCooldownUntil = 0;
+const SHIELD_COOLDOWN = 4500; // ms
+const SHIELD_DURATION = 700; // ms
+const shieldBtn = document.getElementById('shieldBtn');
+function triggerShield(){
+  const now = performance.now();
+  if(now < shieldCooldownUntil) return;
+  isShielding = true;
+  shieldCooldownUntil = now + SHIELD_COOLDOWN;
+  setTimeout(()=>{ isShielding = false; }, SHIELD_DURATION);
+  showShieldEffect(0.8 * RING_MAIN_RADIUS, SHIELD_DURATION);
+  shieldBtn.classList.add('cooldown');
+  let remaining = SHIELD_COOLDOWN/1000;
+  shieldBtn.textContent = remaining.toFixed(1);
+  const tick = setInterval(()=>{
+    remaining -= 0.1;
+    if(remaining <= 0){
+      clearInterval(tick);
+      shieldBtn.textContent = 'ЩИТ';
+      shieldBtn.classList.remove('cooldown');
+    } else {
+      shieldBtn.textContent = remaining.toFixed(1);
+    }
+  }, 100);
+}
+shieldBtn.addEventListener('touchstart', e=>{ e.preventDefault(); triggerShield(); });
+shieldBtn.addEventListener('mousedown', e=>{ e.preventDefault(); triggerShield(); });
+
+// ---------------- Three.js scene ----------------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8FC3E8);
+scene.fog = new THREE.FogExp2(0xB9D9E8, 0.005);
+
+// Gradient sky dome — a single big sphere with a soft top-to-bottom gradient, much richer
+// looking than a flat background color, for essentially no extra render cost.
+function makeSkyGradientTexture(topColor, bottomColor){
+  const canvas = document.createElement('canvas');
+  canvas.width = 2; canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,0,256);
+  grad.addColorStop(0, topColor);
+  grad.addColorStop(0.55, bottomColor);
+  grad.addColorStop(1, bottomColor);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,2,256);
+  return new THREE.CanvasTexture(canvas);
+}
+const skyTex = makeSkyGradientTexture('#4A86C4', '#BEEBFF');
+const skyDome = new THREE.Mesh(
+  new THREE.SphereGeometry(600, 20, 14),
+  new THREE.MeshBasicMaterial({map: skyTex, side: THREE.BackSide, fog:false})
+);
+scene.add(skyDome);
+
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth/window.innerHeight, 0.1, 700);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.getElementById('scene').appendChild(renderer.domElement);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Lights
+scene.add(new THREE.AmbientLight(0xBFD0E0, 0.85));
+const sun = new THREE.DirectionalLight(0xFFEAC2, 1.15);
+sun.position.set(30, 60, 20);
+scene.add(sun);
+
+// (ground grid removed — it felt distracting under the grass texture)
+
+// ---------------- Cartoon toon shading helper ----------------
+function makeToonGradient(){
+  const canvas = document.createElement('canvas');
+  canvas.width = 4; canvas.height = 1;
+  const ctx = canvas.getContext('2d');
+  const shades = [85, 150, 205, 255];
+  shades.forEach((v,i)=>{ ctx.fillStyle = `rgb(${v},${v},${v})`; ctx.fillRect(i,0,1,1); });
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.NearestFilter; tex.magFilter = THREE.NearestFilter;
+  return tex;
+}
+const toonGradient = makeToonGradient();
+function toonMat(color){
+  return new THREE.MeshToonMaterial({color, gradientMap: toonGradient});
+}
+
+// Cheap fake contact shadow: a flat, semi-transparent radial-gradient circle placed just above
+// the ground under an object. No real shadow mapping needed — this alone removes a lot of the
+// "floating cardboard cutout" feeling for almost zero render cost.
+function makeShadowTexture(){
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+  grad.addColorStop(0.7, 'rgba(0,0,0,0.18)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,size,size);
+  return new THREE.CanvasTexture(canvas);
+}
+const shadowTexture = makeShadowTexture();
+function makeShadowBlob(radius){
+  const mat = new THREE.MeshBasicMaterial({map:shadowTexture, transparent:true, depthWrite:false, fog:false});
+  const blob = new THREE.Mesh(new THREE.CircleGeometry(radius, 16), mat);
+  blob.rotation.x = -Math.PI/2;
+  return blob;
+}
+
+// Cheap cartoon outline: a slightly larger, black, back-face-only copy of the mesh
+function addOutline(mesh, scale, color){
+  const outlineMat = new THREE.MeshBasicMaterial({color: color || 0x14210f, side: THREE.BackSide});
+  const outline = new THREE.Mesh(mesh.geometry, outlineMat);
+  outline.scale.multiplyScalar(scale || 1.09);
+  mesh.add(outline);
+  return mesh;
+}
+
+// Procedural cartoon grass texture for the ground
+function makeGrassTexture(){
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#6B8E4E';
+  ctx.fillRect(0,0,size,size);
+  const tile = 64;
+  for(let y=0; y<size; y+=tile){
+    for(let x=0; x<size; x+=tile){
+      const dark = ((x/tile)+(y/tile)) % 2 === 0;
+      ctx.fillStyle = dark ? '#5A7A42' : '#79995A';
+      ctx.fillRect(x,y,tile,tile);
+      // readable dark outline between patches, cartoon-style
+      ctx.strokeStyle = 'rgba(45,70,35,0.3)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x+1.5,y+1.5,tile-3,tile-3);
+    }
+  }
+  // scattered grass tufts for texture detail
+  for(let i=0;i<420;i++){
+    const x = Math.random()*size, y = Math.random()*size;
+    ctx.strokeStyle = 'rgba(45,80,40,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    ctx.lineTo(x+2, y-7);
+    ctx.stroke();
+  }
+  // a few lighter highlight speckles so it doesn't read flat
+  for(let i=0;i<120;i++){
+    const x = Math.random()*size, y = Math.random()*size;
+    ctx.fillStyle = 'rgba(210,225,170,0.18)';
+    ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(14,14);
+  tex.anisotropy = 4;
+  return tex;
+}
+const grassTexture = makeGrassTexture();
+const floorMat2 = new THREE.MeshToonMaterial({map: grassTexture, gradientMap: toonGradient});
+const floor = new THREE.Mesh(new THREE.CircleGeometry(150, 48), floorMat2);
+floor.rotation.x = -Math.PI/2; floor.position.y = -25;
+scene.add(floor);
+
+// ---------------- Mountaintop context: cliff slope, valley floor, and hazy distant peaks ----------------
+// Gives the impression the grass plateau sits on top of a mountain, instead of floating in empty space.
+const cliffMat = toonMat(0x8C8375);
+const cliff = new THREE.Mesh(new THREE.CylinderGeometry(150, 390, 70, 40, 1, true), cliffMat);
+cliff.position.y = -25 - 35;
+scene.add(cliff);
+
+const valleyMat = toonMat(0x5C7A52);
+const valleyFloor = new THREE.Mesh(new THREE.CircleGeometry(510, 40), valleyMat);
+valleyFloor.rotation.x = -Math.PI/2;
+valleyFloor.position.y = -95;
+scene.add(valleyFloor);
+
+// Procedural rocky texture for the mountains — soft, low-contrast blotches read as "blurred" distant rock
+function makeMountainTexture(baseColor){
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0,0,size,size);
+  for(let i=0;i<50;i++){
+    const x = Math.random()*size, y = Math.random()*size;
+    const r = 14+Math.random()*26;
+    const grad = ctx.createRadialGradient(x,y,0,x,y,r);
+    grad.addColorStop(0, 'rgba(255,255,255,0.10)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  }
+  for(let i=0;i<50;i++){
+    const x = Math.random()*size, y = Math.random()*size;
+    const r = 14+Math.random()*26;
+    const grad = ctx.createRadialGradient(x,y,0,x,y,r);
+    grad.addColorStop(0, 'rgba(0,0,0,0.10)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  return tex;
+}
+
+function makeMountain(x, z, height, radius, color){
+  const group = new THREE.Group();
+  // Soft, semi-transparent material (no toon banding) so the silhouette reads as hazy/blurred at a distance
+  const mat = new THREE.MeshLambertMaterial({
+    color, map: makeMountainTexture('#'+color.toString(16).padStart(6,'0')),
+    transparent: true, opacity: 0.88
+  });
+  const mountain = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 9), mat);
+  mountain.position.set(0, 0, 0);
+  group.add(mountain);
+
+  // Snow cap on the top third of the peak — cheap: one small extra cone, no new textures
+  const snowMat = new THREE.MeshLambertMaterial({color:0xF3F8FF, transparent:true, opacity:0.92});
+  const snowCap = new THREE.Mesh(new THREE.ConeGeometry(radius*0.36, height*0.32, 9), snowMat);
+  snowCap.position.y = height*0.42;
+  group.add(snowCap);
+
+  group.position.set(x, -95 + height/2, z);
+  group.rotation.y = Math.random()*Math.PI;
+  return group;
+}
+const mountainColors = [0x6B7FA6, 0x8593B8, 0x5A6D91, 0x99A6C4, 0x4F6088];
+for(let i=0;i<26;i++){
+  const angle = (i/26)*Math.PI*2 + Math.random()*0.15;
+  const r = 285 + Math.random()*165;
+  const height = 70 + Math.random()*110;
+  const mRadius = 30 + Math.random()*35;
+  const color = mountainColors[Math.floor(Math.random()*mountainColors.length)];
+  scene.add(makeMountain(Math.cos(angle)*r, Math.sin(angle)*r, height, mRadius, color));
+}
+
+// ---------------- Cartoon scenery: tall branching trees scattered across the whole map ----------------
+function makeTree(x, z, scale){
+  const group = new THREE.Group();
+  const trunkMat = toonMat(0x8A5A3B);
+  const trunkHeight = 9;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.85,trunkHeight,8), trunkMat);
+  trunk.position.y = trunkHeight/2;
+  addOutline(trunk, 1.1);
+  group.add(trunk);
+
+  // A few angled branches poking out partway up the trunk, each with a small leaf cluster at the tip
+  const leafColors = [0x4C7A3D, 0x3D6B32, 0x5C8F49];
+  const branchMat = toonMat(0x8A5A3B);
+  const branchCount = 4;
+  for(let b=0; b<branchCount; b++){
+    const branchAngle = (b/branchCount)*Math.PI*2 + Math.random()*0.6;
+    const branchHeight = trunkHeight*0.45 + b*1.1;
+    const branchLen = 2.2 + Math.random()*0.8;
+    const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.2,branchLen,6), branchMat);
+    branch.position.set(Math.cos(branchAngle)*branchLen*0.4, branchHeight, Math.sin(branchAngle)*branchLen*0.4);
+    branch.rotation.z = Math.PI/2 - 0.7;
+    branch.rotation.y = branchAngle;
+    addOutline(branch, 1.15);
+    group.add(branch);
+
+    const tipLeaf = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1+Math.random()*0.4, 1), toonMat(leafColors[b % leafColors.length]));
+    tipLeaf.position.set(Math.cos(branchAngle)*branchLen*0.85, branchHeight+0.6, Math.sin(branchAngle)*branchLen*0.85);
+    addOutline(tipLeaf, 1.08);
+    group.add(tipLeaf);
+  }
+
+  // Main canopy stacked on top of the trunk
+  for(let i=0;i<4;i++){
+    const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(3.4 - i*0.6, 1), toonMat(leafColors[i % leafColors.length]));
+    leaf.position.y = trunkHeight*0.6 + i*2.6;
+    addOutline(leaf, 1.08);
+    group.add(leaf);
+  }
+
+  // Cheap contact shadow at the base
+  const shadow = makeShadowBlob(3.4);
+  shadow.position.y = 0.05;
+  group.add(shadow);
+
+  const s = scale || (1.15 + Math.random()*0.7);
+  group.scale.set(s,s,s);
+  group.position.set(x, -25, z); // anchor the tree's own origin at ground level so it scales upward cleanly
+  return group;
+}
+
+const treeColliders = [];
+const NUM_TREES = 52; // more trees to keep similar density across the bigger map
+// Matches the tallest canopy layer in makeTree(): trunkHeight*0.6 + 3*2.6 + (3.4-3*0.6), padded ~15% for outline meshes
+const TREE_LOCAL_TOP = (9*0.6 + 3*2.6 + (3.4-3*0.6)) * 1.15;
+
+function plantTree(tx, tz, treeScale){
+  scene.add(makeTree(tx, tz, treeScale));
+  treeColliders.push({
+    x:tx, z:tz,
+    radius: 4.2*treeScale,
+    topY: -25 + TREE_LOCAL_TOP*treeScale // exact canopy top for THIS tree's actual scale
+  });
+}
+
+// The direct approach lane to each ring is kept clear of random forest — a single deliberate
+// obstacle tree is placed in each lane instead, so there's exactly one tree that can get in the way.
+function inApproachLane(x, z){
+  const inRightLane = x > 22 && x < 65 && Math.abs(z) < 12;
+  const inLeftLane = x < -22 && x > -65 && Math.abs(z) < 12;
+  return inRightLane || inLeftLane;
+}
+
+let treesPlaced = 0;
+while(treesPlaced < NUM_TREES){
+  const angle = Math.random()*Math.PI*2;
+  const r = 21 + Math.random()*120; // spread across almost the whole (now bigger) map
+  const tx = Math.cos(angle)*r, tz = Math.sin(angle)*r;
+  // keep spawn lanes, goal areas, and the direct approach lanes clear of random clutter
+  const nearSpawn = Math.abs(tz) < 9 && Math.abs(tx) < 12;
+  const nearGoal = Math.abs(Math.abs(tx)-68) < 13 && Math.abs(tz) < 13;
+  if(nearSpawn || nearGoal || inApproachLane(tx,tz)) continue;
+  const treeScale = 1.0 + Math.random()*2.0; // even bigger height/size variance across the larger map
+  plantTree(tx, tz, treeScale);
+  treesPlaced++;
+}
+
+// Exactly one deliberate obstacle tree in each lane leading to a ring
+plantTree(43 + Math.random()*6, (Math.random()-0.5)*14, 1.8);
+plantTree(-43 - Math.random()*6, (Math.random()-0.5)*14, 1.8);
+
+// Small scattered ground clutter — rocks and bushes for a bit more life without extra complexity
+function makeRock(x,z){
+  const group = new THREE.Group();
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.9+Math.random()*0.5, 0), toonMat(0x8C8478));
+  rock.position.y = 0.7;
+  rock.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+  addOutline(rock, 1.1, 0x453f37);
+  group.add(rock);
+  const shadow = makeShadowBlob(1.1);
+  shadow.position.y = 0.05;
+  group.add(shadow);
+  group.position.set(x, -25, z);
+  return group;
+}
+function makeBush(x,z){
+  const group = new THREE.Group();
+  const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(0.75+Math.random()*0.45, 0), toonMat(0x3D6B32));
+  bush.position.y = 0.75;
+  addOutline(bush, 1.1, 0x1c4a26);
+  group.add(bush);
+  const shadow = makeShadowBlob(1.0);
+  shadow.position.y = 0.05;
+  group.add(shadow);
+  group.position.set(x, -25, z);
+  return group;
+}
+for(let i=0;i<32;i++){
+  const angle = Math.random()*Math.PI*2;
+  const r = 82 + Math.random()*83;
+  const cx = Math.cos(angle)*r, cz = Math.sin(angle)*r;
+  scene.add(Math.random() < 0.5 ? makeRock(cx,cz) : makeBush(cx,cz));
+}
+
+function makeCloud(x,y,z){
+  const group = new THREE.Group();
+  const puffMat = toonMat(0xFFFFFF);
+  const puffCount = 4 + Math.floor(Math.random()*3);
+  for(let i=0;i<puffCount;i++){
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(1.4 + Math.random()*0.8, 10, 10), puffMat);
+    puff.position.set((Math.random()-0.5)*3.5, (Math.random()-0.5)*0.8, (Math.random()-0.5)*2);
+    addOutline(puff, 1.07, 0x9FB8C8);
+    group.add(puff);
+  }
+  group.position.set(x,y,z);
+  return group;
+}
+for(let i=0;i<14;i++){
+  const angle = Math.random()*Math.PI*2;
+  const r = 60 + Math.random()*82;
+  scene.add(makeCloud(Math.cos(angle)*r, 20+Math.random()*25, Math.sin(angle)*r));
+}
+
+// Arena bounds (invisible dome, just a radius we clamp to)
+const ARENA_RADIUS = 142;
+const ARENA_HEIGHT_MIN = -20, ARENA_HEIGHT_MAX = 55;
+
+// Goal rings — one per player (2 players = 2 goals), enlarged 1.2x again on top of the previous size
+function makeRing(color, x, z, y){
+  const torus = new THREE.Mesh(
+    new THREE.TorusGeometry(3.456, 0.38016, 12, 32),
+    new THREE.MeshStandardMaterial({color, emissive:color, emissiveIntensity:0.75, metalness:0.3, roughness:0.25})
+  );
+  torus.position.set(x, y, z);
+  torus.rotation.y = Math.PI/2;
+  addOutline(torus, 1.12, 0x0a1420);
+  scene.add(torus);
+}
+makeRing(0x3DD6D0, -68, 0, 5);
+makeRing(0xFF6259, 68, 0, 5);
+
+// Drone builder — a bit more detail (stepped hull, cockpit dome, camera gimbal, propeller blades, skids)
+// while staying low-poly and simple in spirit.
+function buildDrone(color){
+  const group = new THREE.Group();
+
+  const bodyMat = new THREE.MeshStandardMaterial({color, metalness:0.65, roughness:0.25, emissive:color, emissiveIntensity:0.22});
+
+  // Supercar-style wedge hull — a handful of simple tapered box segments running nose-to-tail:
+  // low sharp nose, wide rear haunches, tapered tail. Straight lines throughout, no outline shell.
+  const hullSegments = [
+    {z: 0.95, w:0.55, h:0.09, y:-0.06}, // front splitter / nose tip
+    {z: 0.55, w:0.98, h:0.16, y:-0.02}, // hood
+    {z: 0.12, w:1.08, h:0.20, y: 0.00}, // cabin base
+    {z:-0.35, w:1.28, h:0.22, y: 0.00}, // wide rear haunches
+    {z:-0.85, w:0.92, h:0.13, y: 0.02}, // tapered tail
+  ];
+  hullSegments.forEach(s=>{
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(s.w, s.h, 0.48), bodyMat);
+    seg.position.set(0, s.y, s.z);
+    group.add(seg);
+  });
+
+  // Raked windshield — a single angled slab, low wedge canopy
+  const windshieldMat = new THREE.MeshStandardMaterial({color:0x0d1622, metalness:0.3, roughness:0.15, transparent:true, opacity:0.85, emissive:color, emissiveIntensity:0.5});
+  const windshield = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.2, 0.5), windshieldMat);
+  windshield.position.set(0, 0.15, 0.12);
+  windshield.rotation.x = -0.4;
+  group.add(windshield);
+
+  // Rear wing on thin struts — the classic supercar silhouette cue
+  const trimMat = new THREE.MeshStandardMaterial({color:0x14181f, metalness:0.7, roughness:0.3});
+  const wingMat = new THREE.MeshStandardMaterial({color:0x14181f, metalness:0.6, roughness:0.3, emissive:color, emissiveIntensity:0.25});
+  const wingPlate = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.03, 0.22), wingMat);
+  wingPlate.position.set(0, 0.27, -0.95);
+  group.add(wingPlate);
+  [-1,1].forEach(side=>{
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.04), trimMat);
+    strut.position.set(side*0.4, 0.16, -0.95);
+    group.add(strut);
+  });
+
+  // Two straight axle rails (front and back) — each one a single bar spanning left to right,
+  // with a fan mounted at either end, like a car's front and rear axles carrying its wheels.
+  const armMat = new THREE.MeshStandardMaterial({color:0x1A2233, metalness:0.6, roughness:0.35});
+  const AXLE_HALF_SPAN = 1.3;
+  const axles = [
+    {z: 0.6},  // front axle
+    {z:-0.5},  // rear axle
+  ];
+  axles.forEach(axle=>{
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(AXLE_HALF_SPAN*2, 0.09, 0.14), armMat);
+    rail.position.set(0, -0.02, axle.z);
+    group.add(rail);
+
+    [-1,1].forEach((side, idx)=>{
+      const x = side*AXLE_HALF_SPAN;
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.15,0.16,10), armMat);
+      hub.position.set(x, 0.05, axle.z);
+      group.add(hub);
+
+      // Tiny nav light per fan — alternating red/green like a real aircraft
+      const led = new THREE.Mesh(new THREE.SphereGeometry(0.055,8,8), new THREE.MeshBasicMaterial({color: idx===0 ? 0xff3b3b : 0x3bff6a}));
+      led.position.set(x, 0.12, axle.z);
+      group.add(led);
+
+      // Propeller: a thin cross of blades instead of a flat disc, so it reads as blades when spinning
+      const bladeMat = new THREE.MeshStandardMaterial({color:0x2a3244, transparent:true, opacity:0.6});
+      const bladeGroup = new THREE.Group();
+      const blade1 = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.02, 0.09), bladeMat);
+      const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.02, 0.09), bladeMat);
+      blade2.rotation.y = Math.PI/2;
+      bladeGroup.add(blade1, blade2);
+      bladeGroup.position.set(x, 0.14, axle.z);
+      bladeGroup.userData.spin = true;
+      group.add(bladeGroup);
+    });
+  });
+
+  const light = new THREE.PointLight(color, 1.2, 6);
+  light.position.set(0,0.3,0);
+  group.add(light);
+  group.scale.set(1.4, 1.85, 1.95); // standard drone model size — taller and a bit longer nose-to-tail than wide
+  return group;
+}
+
+const player = buildDrone(0x3DD6D0);
+player.position.set(0, 2, 30);
+scene.add(player);
+
+const aiDrone = buildDrone(0xFF6259);
+aiDrone.position.set(0, 2, -30);
+scene.add(aiDrone);
+
+// Drone contact shadows — shrink and fade as the drone climbs, classic cheap "sun shadow" trick
+const playerShadow = makeShadowBlob(2.6);
+const aiShadow = makeShadowBlob(2.6);
+scene.add(playerShadow);
+scene.add(aiShadow);
+function updateDroneShadow(shadow, dronePos){
+  shadow.position.set(dronePos.x, -24.95, dronePos.z);
+  const heightAbove = Math.max(0, dronePos.y - (-25));
+  const falloff = Math.max(0.15, 1 - heightAbove/40);
+  shadow.scale.set(falloff, falloff, falloff);
+  shadow.material.opacity = falloff;
+}
+
+// ---------------- Shield visual effect: lightning-colored energy field ----------------
+// Only exists on screen for the 0.7s the ability is active, so the extra geometry costs nothing
+// the rest of the match — a handful of thin lines and one translucent sphere.
+const shieldEffectGroup = new THREE.Group();
+const shieldSphereMat = new THREE.MeshBasicMaterial({color:0x8FE8FF, transparent:true, opacity:0.22, blending:THREE.AdditiveBlending, depthWrite:false});
+const shieldSphere = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), shieldSphereMat);
+shieldEffectGroup.add(shieldSphere);
+
+const SHIELD_BOLT_COUNT = 7;
+const shieldBoltLines = [];
+for(let i=0;i<SHIELD_BOLT_COUNT;i++){
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(4*3); // start, two jagged kinks, end
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.LineBasicMaterial({color:0xCFF6FF, transparent:true, opacity:0.95, blending:THREE.AdditiveBlending});
+  const line = new THREE.Line(geo, mat);
+  shieldEffectGroup.add(line);
+  shieldBoltLines.push(line);
+}
+shieldEffectGroup.visible = false;
+scene.add(shieldEffectGroup);
+
+function randomizeShieldBolts(radius){
+  shieldBoltLines.forEach(line=>{
+    const dir = new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).normalize();
+    const pts = [new THREE.Vector3(0,0,0)];
+    for(let k=1;k<=2;k++){
+      const t = k/3;
+      const p = dir.clone().multiplyScalar(radius*t);
+      p.x += (Math.random()-0.5)*radius*0.4;
+      p.y += (Math.random()-0.5)*radius*0.4;
+      p.z += (Math.random()-0.5)*radius*0.4;
+      pts.push(p);
+    }
+    pts.push(dir.clone().multiplyScalar(radius));
+    const arr = line.geometry.attributes.position.array;
+    pts.forEach((p,idx)=>{ arr[idx*3]=p.x; arr[idx*3+1]=p.y; arr[idx*3+2]=p.z; });
+    line.geometry.attributes.position.needsUpdate = true;
+  });
+}
+
+let shieldFlickerInterval = null;
+function showShieldEffect(radius, duration){
+  shieldEffectGroup.visible = true;
+  shieldSphere.scale.set(radius, radius, radius);
+  randomizeShieldBolts(radius);
+  clearInterval(shieldFlickerInterval);
+  shieldFlickerInterval = setInterval(()=>randomizeShieldBolts(radius), 70);
+  setTimeout(()=>{
+    clearInterval(shieldFlickerInterval);
+    shieldEffectGroup.visible = false;
+  }, duration);
+}
+
+// ---------------- Speed trails ----------------
+function makeTrail(color){
+  const maxPoints = 26;
+  const positions = new Float32Array(maxPoints*3);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.LineBasicMaterial({color, transparent:true, opacity:0.55, blending:THREE.AdditiveBlending});
+  const line = new THREE.Line(geo, mat);
+  scene.add(line);
+  return {line, geo, points:[], maxPoints};
+}
+const playerTrail = makeTrail(0x3DD6D0);
+const aiTrail = makeTrail(0xFF6259);
+
+function updateTrail(trail, position, speedMag){
+  trail.points.unshift(position.clone());
+  if(trail.points.length > trail.maxPoints) trail.points.pop();
+  const arr = trail.geo.attributes.position.array;
+  for(let i=0;i<trail.maxPoints;i++){
+    const p = trail.points[i] || trail.points[trail.points.length-1] || position;
+    arr[i*3] = p.x; arr[i*3+1] = p.y; arr[i*3+2] = p.z;
+  }
+  trail.geo.attributes.position.needsUpdate = true;
+  trail.line.material.opacity = Math.min(0.85, 0.25 + speedMag*0.04);
+}
+
+// The lure
+const lureGeo = new THREE.IcosahedronGeometry(1, 1);
+const lureMat = new THREE.MeshStandardMaterial({color:0xFFC94A, emissive:0xFFC94A, emissiveIntensity:1.1, metalness:0.3, roughness:0.2});
+const lure = new THREE.Mesh(lureGeo, lureMat);
+lure.position.set(0, 6, 0);
+addOutline(lure, 1.1, 0x5c3d00);
+scene.add(lure);
+const lureLight = new THREE.PointLight(0xFFC94A, 2.5, 18);
+lure.add(lureLight);
+
+// Lure movement: erratic drifting target when loose, with a real velocity so it can be knocked around
+let lureTarget = new THREE.Vector3(0,6,0);
+const lureVel = new THREE.Vector3();
+let lureImmuneUntil = 0;
+function pickNewLureTarget(){
+  const angle = Math.random()*Math.PI*2;
+  const r = Math.random()*ARENA_RADIUS*0.7;
+  lureTarget.set(Math.cos(angle)*r, 4+Math.random()*20, Math.sin(angle)*r);
+}
+pickNewLureTarget();
+setInterval(pickNewLureTarget, 2200);
+
+// Bounces a free-flying ball off tree trunks/canopies with a bit of speed loss, instead of stopping dead
+function bounceOffTrees(pos, vel, damping){
+  for(const t of treeColliders){
+    if(pos.y > t.topY) continue;
+    const dx = pos.x - t.x, dz = pos.z - t.z;
+    const dist = Math.hypot(dx, dz) || 0.001;
+    if(dist < t.radius){
+      const nx = dx/dist, nz = dz/dist;
+      pos.x = t.x + nx*t.radius;
+      pos.z = t.z + nz*t.radius;
+      const vn = vel.x*nx + vel.z*nz;
+      if(vn < 0){
+        vel.x -= 2*vn*nx;
+        vel.z -= 2*vn*nz;
+        vel.multiplyScalar(damping);
+      }
+    }
+  }
+}
+
+// ---------------- Win ball: small, fast, ends the match if caught ----------------
+const winBallGeo = new THREE.IcosahedronGeometry(1/3, 2);
+const winBallMat = new THREE.MeshStandardMaterial({color:0xFF3DE0, emissive:0xFF2FE8, emissiveIntensity:2.2, metalness:0.5, roughness:0.1});
+const winBall = new THREE.Mesh(winBallGeo, winBallMat);
+winBall.position.set(0, 30, 0);
+addOutline(winBall, 1.12, 0x5c0050);
+scene.add(winBall);
+const winBallLight = new THREE.PointLight(0xFF3DE0, 4, 24);
+winBall.add(winBallLight);
+
+// Soft glowing halo sprite behind the ball so it reads clearly against sky and ground alike
+function makeGlowSprite(color, size){
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(64,64,0,64,64,64);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, color);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,128,128);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({map:tex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false});
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(size,size,1);
+  return sprite;
+}
+const winBallHalo = makeGlowSprite('rgba(255,61,224,0.9)', 4.5);
+winBall.add(winBallHalo);
+
+// ---------------- Explosion effect (drone-vs-drone collision) ----------------
+const explosionParticles = [];
+function spawnExplosion(position){
+  for(let i=0;i<18;i++){
+    const spr = makeGlowSprite('rgba(255,140,40,0.95)', 1.1+Math.random()*0.9);
+    spr.position.copy(position);
+    scene.add(spr);
+    const dir = new THREE.Vector3((Math.random()-0.5), Math.random()*0.6+0.1, (Math.random()-0.5)).normalize();
+    explosionParticles.push({
+      sprite: spr,
+      vel: dir.multiplyScalar(9+Math.random()*16),
+      life: 0,
+      maxLife: 0.55+Math.random()*0.35
+    });
+  }
+}
+function updateExplosions(dt){
+  for(let i=explosionParticles.length-1;i>=0;i--){
+    const p = explosionParticles[i];
+    p.life += dt;
+    p.sprite.position.add(p.vel.clone().multiplyScalar(dt));
+    p.vel.multiplyScalar(0.9);
+    const t = p.life/p.maxLife;
+    p.sprite.material.opacity = Math.max(0, (1-t)*0.95);
+    p.sprite.scale.multiplyScalar(1+dt*2.2);
+    if(p.life >= p.maxLife){
+      scene.remove(p.sprite);
+      explosionParticles.splice(i,1);
+    }
+  }
+}
+
+const winBallVel = new THREE.Vector3();
+let winBallTarget = new THREE.Vector3();
+function pickNewWinBallTarget(){
+  const angle = Math.random()*Math.PI*2;
+  const r = ARENA_RADIUS*0.65 + Math.random()*ARENA_RADIUS*0.32; // hugs the edges of the map
+  winBallTarget.set(Math.cos(angle)*r, 6+Math.random()*35, Math.sin(angle)*r);
+}
+pickNewWinBallTarget();
+setInterval(()=>{ if(winBallState === 'wander') pickNewWinBallTarget(); }, 4000);
+
+// Proximity-triggered flee behavior: when a drone gets close, the ball dashes 3 times in a row, then slows briefly
+const WIN_BALL_TRIGGER_RADIUS = 15;
+const WIN_BALL_DASH_GAP = 0.32; // seconds between the 3 dashes
+const WIN_BALL_SLOW_DURATION = 2500; // ms of sluggishness after fleeing
+let winBallState = 'wander'; // 'wander' | 'fleeing' | 'slowed'
+let winBallDashesLeft = 0;
+let winBallDashTimer = 0;
+let winBallSlowUntil = 0;
+
+// ---------------- Game state ----------------
+let scoreYou = 0, scoreAI = 0;
+const WIN_SCORE = 5;
+let gameOver = false;
+let carrier = null; // null | 'player' | 'ai'
+const PICKUP_RADIUS = 2.8;
+const STEAL_RADIUS = 3.6;
+const DRONE_COLLIDE_RADIUS = 3.6;
+let collisionInvulnUntil = 0;
+const playerGoals = [{x:-68,y:5,z:0}];
+const aiGoals = [{x:68,y:5,z:0}];
+const GOAL_RADIUS = 5.184;
+
+const playerVel = new THREE.Vector3();
+const aiVel = new THREE.Vector3();
+let playerYaw = 0;
+let remoteYaw = 0;
+let clientPrevPos = null;
+let aiBoostMultiplier = 1;
+setInterval(()=>{
+  aiBoostMultiplier = Math.random() < 0.04 ? 1.1 : 1;
+  setTimeout(()=>{ aiBoostMultiplier = 1; }, 500);
+}, 5500);
+
+// AI aim wobble — noticeably imperfect aim, updated often so it visibly overshoots and corrects
+let aiAimOffset = new THREE.Vector3();
+setInterval(()=>{
+  aiAimOffset.set((Math.random()-0.5)*26, (Math.random()-0.5)*10, (Math.random()-0.5)*26);
+}, 950);
+
+function showBanner(text){
+  const b = document.getElementById('banner');
+  b.textContent = text;
+  b.classList.add('show');
+  setTimeout(()=>b.classList.remove('show'), 1200);
+}
+
+function endGame(winner, viaWinBall){
+  gameOver = true;
+  document.getElementById('winscreen').classList.add('show');
+  if(viaWinBall){
+    document.getElementById('winText').textContent = winner === 'you' ? 'ТЫ ПОЙМАЛ ЗОЛОТОЙ ШАР — ПОБЕДА!' : 'СОПЕРНИК ПОЙМАЛ ЗОЛОТОЙ ШАР';
+  } else {
+    document.getElementById('winText').textContent = winner === 'you' ? 'ТЫ ПОЙМАЛ БОЛЬШЕ ПРИМАНОК' : 'СОПЕРНИК ПОБЕДИЛ';
+  }
+}
+
+function clampToArena(pos){
+  const r = Math.hypot(pos.x, pos.z);
+  if(r > ARENA_RADIUS){
+    const scale = ARENA_RADIUS/r;
+    pos.x *= scale; pos.z *= scale;
+  }
+  pos.y = Math.max(ARENA_HEIGHT_MIN+2, Math.min(ARENA_HEIGHT_MAX, pos.y));
+}
+
+// Ring collision: the solid tube of the hoop blocks and bounces the drone, but flying through
+// the open center (the actual goal) passes through cleanly — matches the visible torus geometry.
+const RING_MAIN_RADIUS = 3.456;
+const RING_TUBE_RADIUS = 0.38016;
+const RING_COLLIDE_PAD = 1.0; // approximate drone half-size, so the tube feels genuinely solid
+function collideWithRing(pos, vel, ringCenter){
+  const dx = pos.x - ringCenter.x;
+  const dy = pos.y - ringCenter.y;
+  const dz = pos.z - ringCenter.z;
+  // Ring is rotated 90° about Y, so its own local axes map as: localX=-worldZ, localY=worldY, localZ=worldX
+  const Xl = -dz, Yl = dy;
+  const theta = Math.atan2(Yl, Xl);
+  // Nearest point on the tube's center circle, converted back into world space
+  const nearestWorld = new THREE.Vector3(
+    ringCenter.x + 0,
+    ringCenter.y + RING_MAIN_RADIUS*Math.sin(theta),
+    ringCenter.z - RING_MAIN_RADIUS*Math.cos(theta)
+  );
+  const toPoint = new THREE.Vector3(pos.x-nearestWorld.x, pos.y-nearestWorld.y, pos.z-nearestWorld.z);
+  const dist = toPoint.length();
+  const solidRadius = RING_TUBE_RADIUS + RING_COLLIDE_PAD;
+  if(dist < solidRadius && dist > 0.0001){
+    const n = toPoint.multiplyScalar(1/dist);
+    pos.x = nearestWorld.x + n.x*solidRadius;
+    pos.y = nearestWorld.y + n.y*solidRadius;
+    pos.z = nearestWorld.z + n.z*solidRadius;
+    const vn = vel.x*n.x + vel.y*n.y + vel.z*n.z;
+    if(vn < 0){ vel.x -= vn*n.x; vel.y -= vn*n.y; vel.z -= vn*n.z; }
+    vel.multiplyScalar(0.45);
+  }
+}
+
+// Real collision for drones: hitting the arena wall or a tree kills incoming velocity and stops you dead,
+// instead of the soft position-only clamp used for non-physical objects like the lure.
+let lastTreeThudTime = 0;
+function collideWithEnvironment(pos, vel){
+  const r = Math.hypot(pos.x, pos.z);
+  if(r > ARENA_RADIUS){
+    const nx = pos.x/r, nz = pos.z/r;
+    pos.x = nx*ARENA_RADIUS; pos.z = nz*ARENA_RADIUS;
+    const vn = vel.x*nx + vel.z*nz;
+    if(vn > 0){ vel.x -= vn*nx; vel.z -= vn*nz; }
+    vel.multiplyScalar(0.5);
+  }
+  if(pos.y < ARENA_HEIGHT_MIN+2){ pos.y = ARENA_HEIGHT_MIN+2; if(vel.y < 0) vel.y = 0; vel.multiplyScalar(0.7); }
+  if(pos.y > ARENA_HEIGHT_MAX){ pos.y = ARENA_HEIGHT_MAX; if(vel.y > 0) vel.y = 0; vel.multiplyScalar(0.7); }
+
+  // Trees: each tree's own canopy top height is checked individually, matching its actual visual size
+  for(const t of treeColliders){
+    if(pos.y > t.topY) continue;
+    const dx = pos.x - t.x, dz = pos.z - t.z;
+    const dist = Math.hypot(dx, dz) || 0.001;
+    if(dist < t.radius){
+      const nx = dx/dist, nz = dz/dist;
+      pos.x = t.x + nx*t.radius;
+      pos.z = t.z + nz*t.radius;
+      const vn = vel.x*nx + vel.z*nz;
+      const impactSpeed = Math.abs(vn);
+      if(vn < 0){ vel.x -= vn*nx; vel.z -= vn*nz; }
+      vel.multiplyScalar(0.45);
+      const nowMs = performance.now();
+      if(impactSpeed > 1.5 && nowMs - lastTreeThudTime > 250){
+        lastTreeThudTime = nowMs;
+        playTreeThud(impactSpeed);
+      }
+    }
+  }
+}
+
+// ---------------- Main loop ----------------
+const clock = new THREE.Clock();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if(multiplayerMode === 'client'){
+    // Client: no local physics — just send input and render whatever the host last sent.
+    if(gameStarted && !gameOver && mpConn && mpConn.open){
+      smoothStick(smoothMove, moveStick, dt, 9);
+      smoothStick(smoothLift, liftStick, dt, 9);
+      mpConn.send({type:'input', input:{
+        moveX: smoothMove.x, moveY: smoothMove.y,
+        liftX: smoothLift.x, liftY: smoothLift.y,
+        dash: dashRequested
+      }});
+      dashRequested = false;
+
+      // Camera follows the client's own drone — which the host calls "aiDrone" internally
+      const camDistance = 17;
+      const yaw = aiDrone.rotation.y;
+      const camOffset = new THREE.Vector3(-Math.sin(yaw)*camDistance, 8, -Math.cos(yaw)*camDistance);
+      camera.position.lerp(aiDrone.position.clone().add(camOffset), dt*5);
+      camera.up.set(0,1,0);
+      camera.lookAt(aiDrone.position.clone().add(new THREE.Vector3(0,1,0)));
+      player.children.forEach(c=>{ if(c.userData.spin) c.rotation.y += dt*30; });
+      aiDrone.children.forEach(c=>{ if(c.userData.spin) c.rotation.y += dt*30; });
+      updateDroneShadow(playerShadow, player.position);
+      updateDroneShadow(aiShadow, aiDrone.position);
+      if(!clientPrevPos) clientPrevPos = aiDrone.position.clone();
+      const estSpeed = aiDrone.position.distanceTo(clientPrevPos)/Math.max(dt,0.001);
+      clientPrevPos.copy(aiDrone.position);
+      updateEngineSound(estSpeed, false, 0.75);
+    }
+  } else if(gameStarted && !paused && !gameOver && !countdownActive){
+    // Player controls
+    const speed = 38;
+    const liftSpeed = 24;
+    const turnSpeed = 3.0;
+
+    smoothStick(smoothMove, moveStick, dt, 9);
+    smoothStick(smoothLift, liftStick, dt, 9);
+
+    // Yaw is always LEFT stick X, roll is always RIGHT stick X — matches real transmitters.
+    // Mode 2 (DJI-style): LEFT Y = throttle, RIGHT Y = pitch.
+    // Mode 1 (classic):    LEFT Y = pitch,    RIGHT Y = throttle.
+    playerYaw -= smoothMove.x * turnSpeed * dt * 1.4;
+    const forward = new THREE.Vector3(Math.sin(playerYaw), 0, Math.cos(playerYaw));
+    const right = new THREE.Vector3(-Math.cos(playerYaw), 0, Math.sin(playerYaw));
+
+    let throttleInput, pitchThrust;
+    if(controlMode === 'mode2'){
+      throttleInput = -smoothMove.y;
+      pitchThrust = -smoothLift.y;
+    } else {
+      pitchThrust = -smoothMove.y;
+      throttleInput = -smoothLift.y;
+    }
+    const rollThrust = smoothLift.x;
+
+    playerVel.x += (forward.x * pitchThrust + right.x * rollThrust) * speed * dt;
+    playerVel.z += (forward.z * pitchThrust + right.z * rollThrust) * speed * dt;
+    playerVel.y += throttleInput * liftSpeed * dt;
+
+    // drag
+    playerVel.multiplyScalar(0.955);
+
+    // Dash: burst of speed in current facing direction, with a brief steal window
+    if(dashRequested){
+      dashRequested = false;
+      playerVel.x += forward.x * 26;
+      playerVel.z += forward.z * 26;
+      isDashing = true;
+      setTimeout(()=>{ isDashing = false; }, 350);
+    }
+
+    player.position.add(playerVel.clone().multiplyScalar(dt*3));
+    player.rotation.y = playerYaw;
+    player.rotation.z += (rollThrust * 0.45 - player.rotation.z) * Math.min(1, dt*8);
+    player.rotation.x += (pitchThrust * 0.3 - player.rotation.x) * Math.min(1, dt*8);
+    collideWithEnvironment(player.position, playerVel);
+    playerGoals.forEach(g=>collideWithRing(player.position, playerVel, g));
+    aiGoals.forEach(g=>collideWithRing(player.position, playerVel, g));
+
+    // In multiplayer (hosting), the second drone is driven by the real remote player's input
+    // instead of AI logic. Otherwise, the usual bot behavior chases the lure/goal/player.
+    if(multiplayerMode === 'host'){
+      remoteYaw -= remoteInput.moveX * 3.0 * dt * 1.4;
+      const rForward = new THREE.Vector3(Math.sin(remoteYaw), 0, Math.cos(remoteYaw));
+      const rRight = new THREE.Vector3(-Math.cos(remoteYaw), 0, Math.sin(remoteYaw));
+      const rThrottle = -remoteInput.moveY;
+      const rPitch = -remoteInput.liftY;
+      const rRoll = remoteInput.liftX;
+      aiVel.x += (rForward.x*rPitch + rRight.x*rRoll) * 38 * dt;
+      aiVel.z += (rForward.z*rPitch + rRight.z*rRoll) * 38 * dt;
+      aiVel.y += rThrottle * 24 * dt;
+      aiVel.multiplyScalar(0.955);
+      if(remoteInput.dash){
+        aiVel.x += rForward.x*26; aiVel.z += rForward.z*26;
+        remoteInput.dash = false;
+      }
+      aiDrone.position.add(aiVel.clone().multiplyScalar(dt*3));
+      aiDrone.rotation.y = remoteYaw;
+    } else {
+      // AI: chase the loose lure, carry it to its own goal, or chase the player to steal
+      let aiChaseTarget;
+      if(carrier === 'ai'){
+        // head for the opponent's goal (player's rings) — scoring is now into the opponent's ring
+        const nearestGoal = playerGoals.reduce((best,g)=>{
+          const p = new THREE.Vector3(g.x,g.y,g.z);
+          return (!best || aiDrone.position.distanceTo(p) < aiDrone.position.distanceTo(best)) ? p : best;
+        }, null);
+        aiChaseTarget = nearestGoal;
+      } else if(carrier === 'player'){
+        aiChaseTarget = player.position;
+      } else {
+        aiChaseTarget = lure.position;
+      }
+      const toLure = new THREE.Vector3().subVectors(aiChaseTarget, aiDrone.position).add(aiAimOffset);
+      const dist = toLure.length();
+      toLure.normalize();
+      const aiSpeed = 14 * aiBoostMultiplier;
+      aiVel.x += toLure.x * aiSpeed * dt;
+      aiVel.z += toLure.z * aiSpeed * dt;
+      aiVel.y += toLure.y * aiSpeed * dt * 0.6;
+      aiVel.multiplyScalar(0.955);
+      aiDrone.position.add(aiVel.clone().multiplyScalar(dt*3));
+      if(aiVel.length() > 0.01){
+        aiDrone.rotation.y = Math.atan2(aiVel.x, aiVel.z);
+      }
+    }
+    collideWithEnvironment(aiDrone.position, aiVel);
+    playerGoals.forEach(g=>collideWithRing(aiDrone.position, aiVel, g));
+    aiGoals.forEach(g=>collideWithRing(aiDrone.position, aiVel, g));
+
+    // Lure behavior: wanders freely (with real momentum) until picked up, then sticks to its carrier
+    if(carrier === null){
+      const toTarget = new THREE.Vector3().subVectors(lureTarget, lure.position).normalize();
+      lureVel.x += toTarget.x * 10 * dt;
+      lureVel.z += toTarget.z * 10 * dt;
+      lureVel.y += toTarget.y * 10 * dt * 0.5;
+      lureVel.multiplyScalar(0.94);
+      lure.position.add(lureVel.clone().multiplyScalar(dt*3));
+      bounceOffTrees(lure.position, lureVel, 0.82); // bounces off trees, losing a bit of speed
+      clampToArena(lure.position);
+    } else {
+      lureVel.set(0,0,0); // no drift momentum while carried
+      const carrierDrone = carrier === 'player' ? player : aiDrone;
+      const carrierForward = carrier === 'player'
+        ? new THREE.Vector3(Math.sin(playerYaw), 0, Math.cos(playerYaw))
+        : new THREE.Vector3(Math.sin(aiDrone.rotation.y), 0, Math.cos(aiDrone.rotation.y));
+      const stickPos = carrierDrone.position.clone().add(carrierForward.multiplyScalar(0.9)).add(new THREE.Vector3(0,-1.8,0));
+      lure.position.lerp(stickPos, Math.min(1, dt*12));
+    }
+    lure.rotation.y += dt*3;
+    lure.rotation.x += dt*1.4;
+
+    // Shield: while active, touching the big ball while the rival carries it knocks it loose with a burst of speed
+    const SHIELD_RADIUS = 1.2 * RING_MAIN_RADIUS; // 0.8 * 1.5 — increased per request
+    if(isShielding && carrier === 'ai'){
+      const shieldDist = player.position.distanceTo(lure.position);
+      if(shieldDist < SHIELD_RADIUS){
+        carrier = null;
+        const away = new THREE.Vector3().subVectors(lure.position, player.position);
+        away.y = 0;
+        if(away.lengthSq() < 0.001) away.set(0,0,1);
+        away.normalize();
+        lureVel.copy(away.multiplyScalar(48));
+        lureVel.y += 7;
+        // Give the ball a brief head start before anyone can grab it again — otherwise the
+        // carrier (still standing right on top of it this same frame) would instantly re-pick it up.
+        lureImmuneUntil = performance.now() + 450;
+        showBanner('ЩИТ ВЫБИЛ ПРИМАНКУ!');
+        isShielding = false;
+      }
+    }
+
+    // Pickup: whoever is free and touches the loose lure grabs it
+    if(carrier === null && performance.now() > lureImmuneUntil){
+      const playerDist = player.position.distanceTo(lure.position);
+      const aiDist = aiDrone.position.distanceTo(lure.position);
+      if(playerDist < PICKUP_RADIUS && playerDist <= aiDist){
+        carrier = 'player';
+        showBanner('ПРИМАНКА У ТЕБЯ — ЛЕТИ К КОЛЬЦАМ СОПЕРНИКА');
+      } else if(aiDist < PICKUP_RADIUS){
+        carrier = 'ai';
+        showBanner('СОПЕРНИК ПОДХВАТИЛ ПРИМАНКУ');
+      }
+    } else if(carrier === 'ai'){
+      // Player can steal it back by dashing into range, or simply by bumping into the carrier
+      const stealDist = player.position.distanceTo(aiDrone.position);
+      if((isDashing && stealDist < STEAL_RADIUS) || stealDist < DRONE_COLLIDE_RADIUS){
+        carrier = 'player';
+        showBanner('ТЫ ОТОБРАЛ ПРИМАНКУ!');
+      }
+    } else if(carrier === 'player'){
+      // AI steals back during its own speed burst, or simply on contact
+      const stealDist = aiDrone.position.distanceTo(player.position);
+      if((aiBoostMultiplier > 1 && stealDist < STEAL_RADIUS) || stealDist < DRONE_COLLIDE_RADIUS){
+        carrier = 'ai';
+        showBanner('СОПЕРНИК ОТОБРАЛ ПРИМАНКУ!');
+      }
+    }
+
+    // Goal delivery scoring
+    function nearAnyGoal(pos, goals){
+      return goals.some(g => pos.distanceTo(new THREE.Vector3(g.x,g.y,g.z)) < GOAL_RADIUS);
+    }
+    if(carrier === 'player' && nearAnyGoal(lure.position, aiGoals)){
+      scoreYou++;
+      document.getElementById('scoreYou').textContent = scoreYou;
+      showBanner('ГОЛ! +1');
+      playGoalChime();
+      carrier = null;
+      pickNewLureTarget();
+      lure.position.set(0, 10, 0);
+      if(scoreYou >= WIN_SCORE) endGame('you');
+    } else if(carrier === 'ai' && nearAnyGoal(lure.position, playerGoals)){
+      scoreAI++;
+      document.getElementById('scoreAI').textContent = scoreAI;
+      showBanner('СОПЕРНИК ЗАБИЛ ГОЛ');
+      playGoalChime();
+      carrier = null;
+      pickNewLureTarget();
+      lure.position.set(0, 10, 0);
+      if(scoreAI >= WIN_SCORE) endGame('ai');
+    }
+
+    // Win ball behavior: wander near the edges, flee with 3 quick dashes when a drone gets close, then go sluggish
+    const distToPlayer = player.position.distanceTo(winBall.position);
+    const distToAI = aiDrone.position.distanceTo(winBall.position);
+    const nearestThreatDist = Math.min(distToPlayer, distToAI);
+
+    if(winBallState === 'wander' && nearestThreatDist < WIN_BALL_TRIGGER_RADIUS){
+      winBallState = 'fleeing';
+      winBallDashesLeft = 3;
+      winBallDashTimer = 0; // fire the first dash immediately
+    }
+
+    if(winBallState === 'fleeing'){
+      winBallDashTimer -= dt;
+      if(winBallDashTimer <= 0 && winBallDashesLeft > 0){
+        const threatPos = distToPlayer < distToAI ? player.position : aiDrone.position;
+        const away = new THREE.Vector3().subVectors(winBall.position, threatPos);
+        away.y = 0;
+        if(away.lengthSq() < 0.001) away.set(Math.random()-0.5, 0, Math.random()-0.5);
+        away.normalize();
+        away.x += (Math.random()-0.5)*0.5; away.z += (Math.random()-0.5)*0.5;
+        away.normalize();
+        winBallVel.x += away.x * 62;
+        winBallVel.z += away.z * 62;
+        winBallVel.y += (Math.random()-0.2)*22;
+        winBallDashesLeft--;
+        winBallDashTimer = WIN_BALL_DASH_GAP;
+        showBanner(winBallDashesLeft > 0 ? 'ЗОЛОТОЙ ШАР РВАНУЛ!' : 'ЗОЛОТОЙ ШАР ВЫДОХСЯ...');
+        if(winBallDashesLeft <= 0){
+          winBallState = 'slowed';
+          winBallSlowUntil = performance.now() + WIN_BALL_SLOW_DURATION;
+        }
+      }
+    }
+
+    if(winBallState === 'slowed' && performance.now() > winBallSlowUntil){
+      winBallState = 'wander';
+      pickNewWinBallTarget();
+    }
+
+    const WIN_BALL_SPEED = winBallState === 'slowed' ? 6 : 24;
+    const winBallDrag = winBallState === 'slowed' ? 0.88 : 0.96;
+    if(winBallState !== 'fleeing'){
+      const toWinTarget = new THREE.Vector3().subVectors(winBallTarget, winBall.position).normalize();
+      winBallVel.x += toWinTarget.x * WIN_BALL_SPEED * dt;
+      winBallVel.z += toWinTarget.z * WIN_BALL_SPEED * dt;
+      winBallVel.y += toWinTarget.y * WIN_BALL_SPEED * dt * 0.5;
+    }
+    winBallVel.multiplyScalar(winBallDrag);
+    winBall.position.add(winBallVel.clone().multiplyScalar(dt*3));
+    clampToArena(winBall.position);
+    winBall.rotation.y += dt*6;
+    winBall.rotation.x += dt*4;
+    const winPulse = 1 + Math.sin(performance.now()*0.006)*0.25;
+    winBall.scale.set(winPulse, winPulse, winPulse);
+    winBallHalo.scale.set(4.5/winPulse, 4.5/winPulse, 1);
+
+    // Catching the win ball ends the match immediately
+    if(distToPlayer < 2.0){
+      endGame('you', true);
+    } else if(distToAI < 2.0){
+      endGame('ai', true);
+    }
+
+    // Rotor spin visual
+    player.children.forEach(c=>{ if(c.userData.spin) c.rotation.y += dt*30; });
+    aiDrone.children.forEach(c=>{ if(c.userData.spin) c.rotation.y += dt*30; });
+
+    updateTrail(playerTrail, player.position, playerVel.length());
+    updateTrail(aiTrail, aiDrone.position, aiVel.length());
+    updateExplosions(dt);
+    updateEngineSound(playerVel.length(), isDashing, 0.75);
+    updateDroneShadow(playerShadow, player.position);
+    updateDroneShadow(aiShadow, aiDrone.position);
+    if(shieldEffectGroup.visible) shieldEffectGroup.position.copy(player.position);
+
+    // Dynamic camera: pulls back and shakes at high speed for a spectacular feel
+    const playerSpeedMag = playerVel.length();
+    const shake = Math.min(0.25, playerSpeedMag*0.01);
+    const shakeX = (Math.random()-0.5)*shake;
+    const shakeY = (Math.random()-0.5)*shake;
+
+    if(cameraView === 'fpv'){
+      player.visible = false;
+      // FPV: camera sits at the drone's nose/gimbal, looking exactly where it's facing.
+      // Banking is done via camera.up BEFORE lookAt — directly overwriting rotation.z after
+      // lookAt caused gimbal-lock-style upside-down flips, since Three's default Euler order
+      // doesn't compose cleanly with a manually-forced roll component.
+      const targetFov = 88 + Math.min(20, playerSpeedMag*0.6);
+      camera.fov += (targetFov - camera.fov) * dt*3;
+      camera.updateProjectionMatrix();
+      const nosePos = player.position.clone().add(forward.clone().multiplyScalar(0.9)).add(new THREE.Vector3(0,-0.15,0));
+      camera.position.lerp(nosePos, dt*10);
+      camera.position.x += shakeX*0.6; camera.position.y += shakeY*0.6;
+      const bankedUp = new THREE.Vector3(0,1,0).applyAxisAngle(forward, player.rotation.z);
+      camera.up.copy(bankedUp);
+      const lookTarget = player.position.clone().add(forward.clone().multiplyScalar(20)).add(new THREE.Vector3(0,-0.15,0));
+      camera.lookAt(lookTarget);
+    } else {
+      player.visible = true;
+      camera.up.set(0,1,0);
+      // Third person chase camera behind player — pulls back and shakes at speed
+      const targetFov = 72 + Math.min(20, playerSpeedMag*0.8);
+      camera.fov += (targetFov - camera.fov) * dt*3;
+      camera.updateProjectionMatrix();
+      const camDistance = 17 + Math.min(9, playerSpeedMag*0.15);
+      const camOffset = new THREE.Vector3(-Math.sin(playerYaw)*camDistance, 8, -Math.cos(playerYaw)*camDistance);
+      const desiredCamPos = player.position.clone().add(camOffset);
+      camera.position.lerp(desiredCamPos, dt*5);
+      camera.position.x += shakeX; camera.position.y += shakeY;
+      camera.lookAt(player.position.clone().add(new THREE.Vector3(0,1,0)));
+    }
+
+    // Host: stream the authoritative state to the connected client every frame
+    if(multiplayerMode === 'host' && mpConn && mpConn.open){
+      mpConn.send({type:'state', state:{
+        player:{p:player.position.toArray(), r:[player.rotation.x,player.rotation.y,player.rotation.z]},
+        aiDrone:{p:aiDrone.position.toArray(), r:[aiDrone.rotation.x,aiDrone.rotation.y,aiDrone.rotation.z]},
+        lure:{p:lure.position.toArray(), ry:lure.rotation.y},
+        winBall:{p:winBall.position.toArray(), s:winBall.scale.x},
+        scoreYou, scoreAI, gameOver,
+        winnerIsHost: gameOver ? (scoreYou>=WIN_SCORE) : null,
+        viaWinBall: false
+      }});
+    }
+  } else if(!gameStarted && !countdownActive){
+    // Menu background: ball wanders freely, both drones dash and shield-flash fighting over it,
+    // camera breathes in/out while always keeping both drones framed.
+    const t = performance.now()*0.001;
+
+    // --- Ball: free random wander across a wide area, unless currently held ---
+    menuBallRetarget -= dt;
+    if(menuBallRetarget <= 0){
+      const angle = Math.random()*Math.PI*2;
+      const r = 8 + Math.random()*52;
+      menuBallTarget.set(Math.cos(angle)*r, 6+Math.random()*18, Math.sin(angle)*r);
+      menuBallRetarget = 1 + Math.random()*2;
+    }
+
+    const holderDrone = menuHolder === 'player' ? player : (menuHolder === 'ai' ? aiDrone : null);
+    const chaserDrone = menuHolder === 'player' ? aiDrone : player;
+    const chaserVel = menuHolder === 'player' ? aiVel : playerVel;
+
+    if(!holderDrone){
+      // Nobody's holding it — it drifts toward its own random target, with much less drag so a
+      // knocked-loose ball actually sails through the air instead of stopping almost immediately
+      const toTarget = new THREE.Vector3().subVectors(menuBallTarget, lure.position).normalize();
+      menuBallVel.add(toTarget.multiplyScalar(dt*6));
+      menuBallVel.multiplyScalar(0.985);
+      lure.position.add(menuBallVel.clone().multiplyScalar(dt*3));
+    } else {
+      menuBallVel.set(0,0,0);
+    }
+
+    // --- Drones: intercept the ball's predicted path (not just its current spot), with a
+    // randomized wobble per drone so they weave and jostle instead of freezing in place ---
+    menuWobbleRetarget -= dt;
+    if(menuWobbleRetarget <= 0){
+      // Most of the time a sizeable course-correction jitter; fairly often a real misjudgment
+      const bigMistake0 = Math.random() < 0.35 ? 4 : 1;
+      const bigMistake1 = Math.random() < 0.35 ? 4 : 1;
+      menuWobble[0].set((Math.random()-0.5)*32*bigMistake0, (Math.random()-0.5)*16*bigMistake0, (Math.random()-0.5)*32*bigMistake0);
+      menuWobble[1].set((Math.random()-0.5)*32*bigMistake1, (Math.random()-0.5)*16*bigMistake1, (Math.random()-0.5)*32*bigMistake1);
+      menuWobbleRetarget = 0.4 + Math.random()*0.5;
+    }
+
+    [player, aiDrone].forEach((drone, idx)=>{
+      const vel = idx===0 ? playerVel : aiVel;
+      const isHolder = drone === holderDrone;
+      let target, leadVel, leadTime;
+      if(isHolder){
+        // Holder makes a break for open space at high speed
+        target = menuBallTarget;
+        leadVel = null;
+        leadTime = 0;
+      } else if(holderDrone){
+        // Chaser intercepts where the holder is *roughly* heading — imprecisely, real players overshoot this
+        target = holderDrone.position;
+        leadVel = idx===0 ? aiVel : playerVel;
+        leadTime = 0.3 + Math.random()*0.5; // sloppy, inconsistent lead guess
+      } else {
+        target = lure.position;
+        leadVel = menuBallVel;
+        leadTime = 0.25 + Math.random()*0.55;
+      }
+      const predicted = leadVel
+        ? target.clone().add(leadVel.clone().multiplyScalar(leadTime))
+        : target.clone();
+      predicted.add(menuWobble[idx]);
+      const toTarget = new THREE.Vector3().subVectors(predicted, drone.position).normalize();
+      vel.add(toTarget.multiplyScalar(dt*18));
+      vel.multiplyScalar(0.965);
+      drone.position.add(vel.clone().multiplyScalar(dt*3));
+      if(vel.length() > 0.02) drone.rotation.y = Math.atan2(vel.x, vel.z);
+    });
+
+    // Periodic dash bursts and shield-flash "steal attempts"
+    menuDashTimer -= dt;
+    if(menuDashTimer <= 0){
+      menuDashTimer = 0.7 + Math.random()*0.8;
+      const dist = player.position.distanceTo(aiDrone.position);
+      const distToBall = Math.min(player.position.distanceTo(lure.position), aiDrone.position.distanceTo(lure.position));
+      if(holderDrone && dist < 12){
+        // Chaser dashes in and flashes its shield trying to knock the ball loose
+        const toHolder = new THREE.Vector3().subVectors(holderDrone.position, chaserDrone.position).normalize();
+        chaserVel.add(toHolder.multiplyScalar(34));
+        // ~45% chance the dash simply misses — bots aren't perfect
+        const fumble = Math.random() < 0.45;
+        if(dist < 6.5 && !fumble){
+          showShieldEffect(1.2*RING_MAIN_RADIUS, 500);
+          shieldEffectGroup.position.copy(chaserDrone.position);
+          // Actually knock the ball loose with real velocity, instead of just handing it over —
+          // this is the part that makes the shield visibly "push" the ball, not just swap owners.
+          const away = new THREE.Vector3().subVectors(lure.position, chaserDrone.position);
+          away.y = 0;
+          if(away.lengthSq() < 0.001) away.set(0,0,1);
+          away.normalize();
+          menuBallVel.copy(away.multiplyScalar(40));
+          menuBallVel.y += 8;
+          menuHolder = null;
+          menuBallRetarget = 0.001; // force a fresh wander target once it's loose
+          menuBallHangUntil = performance.now() + (900 + Math.random()*700); // real hang time before anyone can grab it back
+          showBanner('ЩИТ ВЫБИЛ МЯЧ!');
+        } else if(dist < 8){
+          showShieldEffect(1.2*RING_MAIN_RADIUS, 400);
+          shieldEffectGroup.position.copy(chaserDrone.position);
+        }
+      } else if(!holderDrone && distToBall < 20 && performance.now() > menuBallHangUntil){
+        // Free-for-all dash toward the loose ball — sometimes one of them fumbles the approach
+        [player, aiDrone].forEach((drone,idx)=>{
+          const vel = idx===0 ? playerVel : aiVel;
+          const fumble = Math.random() < 0.4;
+          const toBall = new THREE.Vector3().subVectors(lure.position, drone.position).normalize();
+          if(fumble) toBall.add(new THREE.Vector3((Math.random()-0.5)*2, 0, (Math.random()-0.5)*2)).normalize();
+          vel.add(toBall.multiplyScalar(30));
+        });
+        if(player.position.distanceTo(lure.position) < 6){ menuHolder = 'player'; showBanner('ТЫ ПОДХВАТИЛ МЯЧ!'); }
+        else if(aiDrone.position.distanceTo(lure.position) < 6){ menuHolder = 'ai'; showBanner('СОПЕРНИК ПОДХВАТИЛ МЯЧ!'); }
+      }
+    }
+
+    // Fixed shield glow window shown briefly during steal attempts above
+    if(shieldEffectGroup.visible) shieldEffectGroup.position.copy(chaserDrone.position);
+
+    player.children.forEach(c=>{ if(c.userData.spin) c.rotation.y += dt*30; });
+    aiDrone.children.forEach(c=>{ if(c.userData.spin) c.rotation.y += dt*30; });
+    updateTrail(playerTrail, player.position, playerVel.length());
+    updateTrail(aiTrail, aiDrone.position, aiVel.length());
+    updateDroneShadow(playerShadow, player.position);
+    updateDroneShadow(aiShadow, aiDrone.position);
+
+    // The ball sticks near whoever currently holds it
+    if(holderDrone){
+      const stickTarget = holderDrone.position.clone().add(new THREE.Vector3(0,-0.6,0));
+      lure.position.lerp(stickTarget, Math.min(1, dt*7));
+    }
+    lure.rotation.y += dt*3;
+    lure.rotation.x += dt*1.4;
+    clampToArena(lure.position);
+
+    // --- Camera: orbits slowly while breathing in/out, always framing both drones ---
+    const midpoint = player.position.clone().add(aiDrone.position).multiplyScalar(0.5);
+    const separation = player.position.distanceTo(aiDrone.position);
+    const breathing = Math.sin(t*0.22)*14;
+    const orbitRadius = Math.max(30, separation*0.85 + 24) + breathing;
+    const orbitHeight = 16 + Math.sin(t*0.15)*7;
+    camera.position.set(
+      midpoint.x + Math.cos(t*0.1)*orbitRadius,
+      orbitHeight,
+      midpoint.z + Math.sin(t*0.1)*orbitRadius
+    );
+    camera.fov += (62 - camera.fov) * dt*2;
+    camera.updateProjectionMatrix();
+    camera.up.set(0,1,0);
+    camera.lookAt(midpoint.x, midpoint.y+2, midpoint.z);
+
+    updateEngineSound(Math.max(playerVel.length(), aiVel.length())*0.28, false, 0.5);
+  } else {
+    // Paused mid-match, countdown in progress, or game over waiting at the menu — engine sound fades to silence
+    updateEngineSound(0);
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch(()=>{ /* fine if this fails locally — only needed for PWA packaging */ });
+  });
+}
+</script>
+</body>
+</html>
