@@ -1103,9 +1103,12 @@ document.getElementById('btnFullscreen').addEventListener('click', ()=>{
   }
 });
 document.getElementById('btnExit').addEventListener('click', ()=>{
-  if(gameStarted){
-    // Exit to main menu: stop the current match and return to the pre-game cinematic screen
+  if(gameStarted || countdownActive){
+    // Exit to main menu: stop the current match (or an in-progress countdown) and return to the pre-game cinematic screen
     gameStarted = false;
+    countdownActive = false;
+    countdownToken++; // invalidate any in-flight countdown so it can't finish later and force-start the match
+    document.getElementById('countdownOverlay').classList.remove('show');
     paused = false;
     gameOver = false;
     if(mpConn){ try{ mpConn.close(); }catch(e){} mpConn = null; }
@@ -1125,14 +1128,17 @@ document.getElementById('btnExit').addEventListener('click', ()=>{
   }
 });
 let countdownActive = false;
+let countdownToken = 0;
 function startCountdown(onComplete){
   countdownActive = true;
+  const myToken = ++countdownToken;
   const overlay = document.getElementById('countdownOverlay');
   const numEl = document.getElementById('countdownNumber');
   const digits = ['3','2','1'];
   overlay.classList.add('show');
   let i = 0;
   function showNext(){
+    if(myToken !== countdownToken) return; // cancelled (e.g. player exited to the main menu)
     if(i >= digits.length){
       overlay.classList.remove('show');
       playCountdownGo();
@@ -1148,7 +1154,7 @@ function startCountdown(onComplete){
     numEl.classList.add('fall-in');
     playCountdownBeep(i);
     if(multiplayerMode === 'host' && mpConn && mpConn.open) mpConn.send({type:'countdown', digit: 3-i});
-    setTimeout(()=>{ numEl.classList.add('fall-out'); }, 550);
+    setTimeout(()=>{ if(myToken === countdownToken) numEl.classList.add('fall-out'); }, 550);
     i++;
     setTimeout(showNext, 800);
   }
@@ -1222,7 +1228,7 @@ menuOpenBtn.addEventListener('click', ()=>{
   showMenuPanel('panelMain');
   document.getElementById('menuScreen').style.display = 'flex';
   document.getElementById('btnRestart').style.display = (gameStarted && !gameOver) ? 'flex' : 'none';
-  document.getElementById('btnExit').innerHTML = gameStarted ? 'ВЫЙТИ В ГЛАВНОЕ МЕНЮ <span class="arrow">▶</span>' : 'ВЫХОД <span class="arrow">▶</span>';
+  document.getElementById('btnExit').innerHTML = (gameStarted || countdownActive) ? 'ВЫЙТИ В ГЛАВНОЕ МЕНЮ <span class="arrow">▶</span>' : 'ВЫХОД <span class="arrow">▶</span>';
   const startLabel = document.getElementById('btnStart');
   startLabel.innerHTML = gameOver ? 'НОВАЯ ИГРА <span class="arrow">▶</span>' : 'ПРОДОЛЖИТЬ <span class="arrow">▶</span>';
 });
