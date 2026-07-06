@@ -269,6 +269,25 @@
     animation:mpSpin 0.8s linear infinite;
   }
   @keyframes mpSpin{ to{ transform:rotate(360deg); } }
+  /* Goal score pop */
+  @keyframes scorePop{ 0%{transform:scale(1);} 35%{transform:scale(1.8);} 100%{transform:scale(1);} }
+  .score-pop{ animation:scorePop 0.55s cubic-bezier(0.2,1.6,0.4,1); }
+  .score-chip .value{ display:inline-block; }
+  /* Off-screen target indicators: arrows on the screen edge pointing to the ball / gold orb */
+  #edgeArrows{ position:fixed; inset:0; pointer-events:none; z-index:35; }
+  .edge-arrow{
+    position:absolute; left:0; top:0; display:none;
+    font-size:30px; line-height:1; color:#FFC94A;
+    text-shadow:0 0 10px rgba(255,201,74,0.9), 0 0 22px rgba(255,201,74,0.5);
+    will-change:transform;
+    animation:arrowPulse 0.9s ease-in-out infinite;
+  }
+  .edge-arrow.magenta{
+    color:#E05CFF;
+    text-shadow:0 0 10px rgba(224,92,255,0.9), 0 0 22px rgba(224,92,255,0.5);
+    font-size:24px;
+  }
+  @keyframes arrowPulse{ 0%,100%{opacity:0.75;} 50%{opacity:1;} }
   .mode-desc b{color:var(--text-hi);}
 
   .menu-open-btn{
@@ -339,6 +358,11 @@
 
 <div class="banner" id="banner">ПОЙМАНО!</div>
 
+<div id="edgeArrows">
+  <div class="edge-arrow" id="arrowLure">➤</div>
+  <div class="edge-arrow magenta" id="arrowWin">➤</div>
+</div>
+
 <div class="dash-btn" id="dashBtn">РЫВОК</div>
 <div class="shield-btn" id="shieldBtn">ЩИТ</div>
 
@@ -390,6 +414,14 @@
         <div class="menu-btn" id="btnFaq">FAQ <span class="arrow">▶</span></div>
         <div class="menu-btn" id="btnMultiplayer">МУЛЬТИПЛЕЕР <span class="arrow">▶</span></div>
         <div class="menu-btn" id="btnExit">ВЫХОД <span class="arrow">▶</span></div>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="font-size:0.78em; letter-spacing:0.08em; opacity:0.65; margin-bottom:5px;">СЛОЖНОСТЬ БОТА <span style="opacity:0.6;">(одиночная игра)</span></div>
+        <div class="mode-toggle">
+          <div class="mode-btn" id="btnAiEasy">ЛЕГКО</div>
+          <div class="mode-btn active" id="btnAiNormal">СРЕДНЕ</div>
+          <div class="mode-btn" id="btnAiHard">СЛОЖНО</div>
+        </div>
       </div>
       <div class="menu-btn" id="btnFullscreen" style="margin-top:10px; justify-content:center;">⛶ ПОЛНЫЙ ЭКРАН</div>
       <div class="menu-toggle-row" style="cursor:default; flex-direction:column; align-items:stretch; gap:6px;">
@@ -779,35 +811,98 @@ function playCountdownGo(){
   });
 }
 
-// ---------------- Menu music: original 8-bit-style drum & bass loop ----------------
-// Not a cover of anything — just fast, driving chiptune energy for the menu screen.
+// ---------------- Music: original chiptune-phonk soundtrack (menu + in-game) ----------------
+// Original compositions — dark, driving "8-bit phonk" vibe (cowbell lead, sliding 808 bass,
+// rolling hats), but NOT a cover of any existing track. Section-based sequencer so the loop
+// is long and varied instead of a single repeating bar.
 let musicGain = null;
-let musicPlaying = false;
+let musicPlaying = null;          // null | 'menu' | 'game'
 let musicNextStepTime = 0;
-let musicStep = 0;
+let musicStep = 0;                // 0..31 inside the current section (2 bars of 16ths)
+let musicSectionIdx = 0;          // index into track.order
 let musicSchedulerId = null;
-const MUSIC_BPM = 172;
-const MUSIC_STEP_DUR = 60/MUSIC_BPM/4; // 16th notes
+let musicTrack = null;
 
-const kickPattern  = [1,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,1,0];
-const snarePattern = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,1,0];
-const hihatPattern = [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1];
-// Original bassline, NES-square-wave style — driving eighth notes, not borrowed from any existing song
-const bassPattern  = [110,0,110,110, 0,110,0,110, 130.81,0,130.81,130.81, 0,98,0,110];
-const leadPattern  = [0,0,0,440, 0,0,523.25,0, 0,0,0,392, 0,466.16,0,0];
+// Note frequency shorthand
+const NF = {
+  E1:41.20, G1:49.00, A1:55.00, C2:65.41, D2:73.42, E2:82.41, F2:87.31, G2:98.00, A2:110.00,
+  C3:130.81, E3:164.81, G3:196.00, A3:220.00, B3:246.94,
+  C4:261.63, D4:293.66, E4:329.63, F4:349.23, G4:392.00, A4:440.00, B4:493.88,
+  C5:523.25, D5:587.33, E5:659.25
+};
 
-function playKick(time){
+// Helper: build a 32-slot array from {index: value} pairs
+function seq32(hits){ const a = new Array(32).fill(0); for(const k in hits) a[+k] = hits[k]; return a; }
+
+// ----- MENU TRACK: 4 sections, 16-bar arrangement before it repeats -----
+const MENU_SECTIONS = [
+  { // A — main groove: cowbell hook over a heavy half-swung kick
+    kick:  seq32({0:1, 7:1, 10:1, 16:1, 23:1, 26:1, 30:1}),
+    snare: seq32({4:1, 12:1, 20:1, 28:1, 31:1}),
+    hat:   seq32({0:1,2:.5,4:1,6:.5,8:1,10:.5,12:1,14:.5, 16:1,18:.5,20:1,22:.5,24:1,26:.5,28:1,29:.6,30:.8,31:.6}),
+    cow:   seq32({0:NF.A4, 3:NF.C5, 6:NF.A4, 10:NF.G4, 12:NF.E4, 16:NF.A4, 19:NF.C5, 22:NF.D5, 25:NF.C5, 28:NF.G4}),
+    bass:  seq32({0:[NF.A2,0.6], 10:[NF.A2,0.35], 16:[NF.A2,0.5], 22:[NF.G2,0.4], 28:[NF.E2,0.4]})
+  },
+  { // B — lift: melody answers up high, roots move F -> G, hats roll in bar 2
+    kick:  seq32({0:1, 7:1, 10:1, 16:1, 23:1, 26:1}),
+    snare: seq32({4:1, 12:1, 20:1, 28:1}),
+    hat:   seq32({0:1,2:.5,4:1,6:.5,8:1,10:.5,12:1,14:.5, 16:.7,17:.4,18:.7,19:.4,20:.7,21:.4,22:.7,23:.4,24:.7,25:.4,26:.7,27:.4,28:.8,29:.5,30:.8,31:.5}),
+    cow:   seq32({0:NF.C5, 3:NF.E5, 6:NF.C5, 10:NF.B4, 12:NF.G4, 16:NF.C5, 19:NF.D5, 22:NF.E5, 26:NF.D5, 28:NF.B4}),
+    bass:  seq32({0:[NF.F2,0.6], 10:[NF.F2,0.35], 16:[NF.G2,0.6], 26:[NF.G2,0.4]})
+  },
+  { // C — breakdown: kick drops out, low drone, sparse descending bell, snare roll back in
+    kick:  seq32({16:1, 23:1, 26:1}),
+    snare: seq32({12:1, 28:1, 30:1, 31:1}),
+    hat:   seq32({2:.4, 6:.4, 10:.4, 14:.4, 16:.6,18:.4,20:.6,22:.4,24:.6,26:.4,28:.6,30:.6}),
+    cow:   seq32({0:NF.E4, 8:NF.D4, 16:NF.C4, 24:NF.E4}),
+    bass:  seq32({0:[NF.A1,1.5], 16:[NF.A1,1.2]})
+  },
+  { // D — turnaround: four-on-the-floor + rising bell riff + snare roll into the loop restart
+    kick:  seq32({0:1,4:1,8:1,12:1, 16:1,20:1,24:1,28:1}),
+    snare: seq32({4:1, 12:1, 20:1, 24:1,25:1,26:1,27:1,28:1,29:1,30:1,31:1}),
+    hat:   seq32({0:1,2:.5,4:1,6:.5,8:1,10:.5,12:1,14:.5, 16:1,18:.5,20:1,22:.5}),
+    cow:   seq32({16:NF.A4, 18:NF.B4, 20:NF.C5, 22:NF.D5, 24:NF.E5, 28:NF.E5}),
+    bass:  seq32({0:[NF.A2,0.45], 8:[NF.A2,0.45], 16:[NF.E2,0.45], 24:[NF.E2,0.45]})
+  }
+];
+
+// ----- IN-GAME TRACK: quiet, sparse, half-time — background pulse under the engine sound -----
+const GAME_SECTIONS = [
+  {
+    kick:  seq32({0:1, 16:1, 23:1}),
+    snare: seq32({8:1, 24:1}),
+    hat:   seq32({2:.4, 6:.4, 10:.4, 14:.4, 18:.4, 22:.4, 26:.4, 30:.4}),
+    cow:   seq32({6:NF.A4, 22:NF.G4}),
+    bass:  seq32({0:[NF.A2,1.0], 16:[NF.A2,1.0]})
+  },
+  {
+    kick:  seq32({0:1, 16:1, 23:1}),
+    snare: seq32({8:1, 24:1}),
+    hat:   seq32({2:.4, 6:.4, 10:.4, 14:.4, 18:.4, 22:.4, 26:.4, 30:.4}),
+    cow:   seq32({0:NF.A4, 3:NF.C5, 10:NF.G4, 16:NF.E4, 22:NF.G4}),
+    bass:  seq32({0:[NF.F2,1.0], 16:[NF.G2,1.0]})
+  }
+];
+
+const MUSIC_TRACKS = {
+  menu: { bpm:140, gain:0.5,  sections:MENU_SECTIONS, order:[0,0,1,0, 2,1,1,3],
+          mix:{kick:0.9, snare:0.45, hat:1.0, cow:0.13, bass:0.30} },
+  game: { bpm:92,  gain:0.16, sections:GAME_SECTIONS, order:[0,0,0,1],
+          mix:{kick:0.8, snare:0.35, hat:0.6, cow:0.09, bass:0.24} }
+};
+
+function playKick(time, vol){
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(150, time);
-  osc.frequency.exponentialRampToValueAtTime(40, time+0.1);
-  gain.gain.setValueAtTime(0.9, time);
-  gain.gain.exponentialRampToValueAtTime(0.001, time+0.15);
+  osc.frequency.setValueAtTime(160, time);
+  osc.frequency.exponentialRampToValueAtTime(36, time+0.12);
+  gain.gain.setValueAtTime(vol, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+0.22);
   osc.connect(gain); gain.connect(musicGain);
-  osc.start(time); osc.stop(time+0.16);
+  osc.start(time); osc.stop(time+0.24);
 }
-function playSnare(time){
+function playSnare(time, vol){
   const bufferSize = Math.floor(audioCtx.sampleRate*0.15);
   const buffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
@@ -817,7 +912,7 @@ function playSnare(time){
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'highpass'; filter.frequency.value = 1000;
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.45, time);
+  gain.gain.setValueAtTime(vol, time);
   gain.gain.exponentialRampToValueAtTime(0.001, time+0.13);
   noise.connect(filter); filter.connect(gain); gain.connect(musicGain);
   noise.start(time); noise.stop(time+0.15);
@@ -837,51 +932,87 @@ function playHihat(time, vel){
   noise.connect(filter); filter.connect(gain); gain.connect(musicGain);
   noise.start(time); noise.stop(time+0.05);
 }
-function playChipNote(freq, time, dur, vol){
+// Melodic "cowbell" — the signature phonk lead, chiptune-flavored: two detuned squares through a bandpass
+function playCowbell(freq, time, vol){
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  osc1.type = 'square'; osc2.type = 'square';
+  osc1.frequency.value = freq;
+  osc2.frequency.value = freq*1.48;
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = freq*1.2; bp.Q.value = 2.5;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(vol, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+0.18);
+  osc1.connect(bp); osc2.connect(bp); bp.connect(gain); gain.connect(musicGain);
+  osc1.start(time); osc2.start(time);
+  osc1.stop(time+0.2); osc2.stop(time+0.2);
+}
+// Sliding 808-style bass: sine with a quick downward pitch glide and a long tail
+function playBass808(freq, time, dur, vol){
   const osc = audioCtx.createOscillator();
-  osc.type = 'square';
-  osc.frequency.value = freq;
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq*2.2, time);
+  osc.frequency.exponentialRampToValueAtTime(freq, time+0.05);
   const gain = audioCtx.createGain();
   gain.gain.setValueAtTime(vol, time);
   gain.gain.exponentialRampToValueAtTime(0.001, time+dur);
   osc.connect(gain); gain.connect(musicGain);
-  osc.start(time); osc.stop(time+dur+0.02);
+  osc.start(time); osc.stop(time+dur+0.03);
 }
 
-function scheduleMusicStep(step, time){
-  if(kickPattern[step]) playKick(time);
-  if(snarePattern[step]) playSnare(time);
-  if(hihatPattern[step]) playHihat(time, step%4===0 ? 1 : 0.55);
-  if(bassPattern[step]) playChipNote(bassPattern[step], time, MUSIC_STEP_DUR*1.7, 0.16);
-  if(leadPattern[step]) playChipNote(leadPattern[step], time, MUSIC_STEP_DUR*1.1, 0.11);
+function scheduleMusicStep(track, step, time){
+  const sec = track.sections[track.order[musicSectionIdx]];
+  const mix = track.mix;
+  if(sec.kick[step])  playKick(time, mix.kick);
+  if(sec.snare[step]) playSnare(time, mix.snare * (sec.snare[step]===1 ? 1 : sec.snare[step]));
+  if(sec.hat[step])   playHihat(time, mix.hat * sec.hat[step]);
+  if(sec.cow[step])   playCowbell(sec.cow[step], time, mix.cow);
+  const b = sec.bass[step];
+  if(b) playBass808(b[0], time, b[1], mix.bass);
 }
 
 function musicScheduler(){
+  if(!musicTrack) return;
+  const stepDur = 60/musicTrack.bpm/4;
   while(musicNextStepTime < audioCtx.currentTime + 0.12){
-    scheduleMusicStep(musicStep, musicNextStepTime);
-    musicNextStepTime += MUSIC_STEP_DUR;
-    musicStep = (musicStep+1) % 16;
+    scheduleMusicStep(musicTrack, musicStep, musicNextStepTime);
+    musicNextStepTime += stepDur;
+    musicStep++;
+    if(musicStep >= 32){
+      musicStep = 0;
+      musicSectionIdx = (musicSectionIdx+1) % musicTrack.order.length;
+    }
   }
 }
 
-function startMenuMusic(){
-  if(!audioReady || musicPlaying) return;
-  musicPlaying = true;
+function startMusic(name){
+  if(!audioReady) return;
+  if(musicPlaying === name) return;
+  stopMusic();
+  musicPlaying = name;
+  musicTrack = MUSIC_TRACKS[name];
   musicGain = audioCtx.createGain();
   musicGain.gain.value = 0.001;
   musicGain.connect(masterGain);
-  musicGain.gain.setTargetAtTime(0.55, audioCtx.currentTime, 0.3);
+  musicGain.gain.setTargetAtTime(musicTrack.gain, audioCtx.currentTime, 0.3);
   musicStep = 0;
+  musicSectionIdx = 0;
   musicNextStepTime = audioCtx.currentTime + 0.05;
   musicSchedulerId = setInterval(musicScheduler, 25);
 }
-function stopMenuMusic(){
+function stopMusic(){
   if(!musicPlaying) return;
-  musicPlaying = false;
+  musicPlaying = null;
   clearInterval(musicSchedulerId);
   const g = musicGain;
   if(g){ g.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.15); setTimeout(()=>g.disconnect(), 500); }
 }
+// Backwards-compatible wrappers (existing call sites) + game-track helpers
+function startMenuMusic(){ startMusic('menu'); }
+function stopMenuMusic(){ stopMusic(); }
+function startGameMusic(){ startMusic('game'); }
+function stopGameMusic(){ if(musicPlaying === 'game') stopMusic(); }
 
 // ---------------- Menu state ----------------
 let gameStarted = false;
@@ -948,6 +1079,15 @@ document.getElementById('backFromMultiplayer').addEventListener('click', ()=>{
   mpResetChoiceView();
   showMenuPanel('panelMain');
 });
+function setAiLevel(level){
+  aiLevel = level;
+  document.getElementById('btnAiEasy').classList.toggle('active', level==='easy');
+  document.getElementById('btnAiNormal').classList.toggle('active', level==='normal');
+  document.getElementById('btnAiHard').classList.toggle('active', level==='hard');
+}
+document.getElementById('btnAiEasy').addEventListener('click', ()=>setAiLevel('easy'));
+document.getElementById('btnAiNormal').addEventListener('click', ()=>setAiLevel('normal'));
+document.getElementById('btnAiHard').addEventListener('click', ()=>setAiLevel('hard'));
 document.getElementById('btnMode1').addEventListener('click', ()=>setControlMode('mode1'));
 document.getElementById('btnMode2').addEventListener('click', ()=>setControlMode('mode2'));
 
@@ -969,7 +1109,14 @@ document.getElementById('btnMultiplayer').addEventListener('click', ()=>showMenu
 let multiplayerMode = null; // null | 'host' | 'client'
 let mpPeer = null;
 let mpConn = null;
-let remoteInput = {moveX:0, moveY:0, liftX:0, liftY:0, dash:false, shield:false};
+// The client maps its own sticks through its own Mode 1 / Mode 2 setting locally and sends
+// SEMANTIC input (yaw/throttle/pitch/roll) — so the host doesn't need to know the client's mode.
+let remoteInput = {yawIn:0, throttle:0, pitch:0, roll:0, dash:false, shield:false};
+let remoteShieldUntil = 0;          // host-side: remote player's shield active window
+let remoteShieldCooldownUntil = 0;  // host-side: enforce the same cooldown for the remote player
+// Client-side snapshot buffer for smooth interpolation of the host's authoritative state
+let mpSnapshots = [];
+const MP_INTERP_DELAY = 110; // ms of render delay — absorbs network jitter
 
 function mpResetChoiceView(){
   document.getElementById('mpChoice').style.display = 'block';
@@ -995,7 +1142,16 @@ document.getElementById('btnMpCreate').addEventListener('click', ()=>{
     multiplayerMode = 'host';
     mpConn.on('open', ()=>{
       mpConn.on('data', data=>{
-        if(data.type === 'input') remoteInput = data.input;
+        if(data.type === 'input'){
+          remoteInput = data.input;
+          if(remoteInput.shield){
+            const now = performance.now();
+            if(now > remoteShieldCooldownUntil){
+              remoteShieldUntil = now + SHIELD_DURATION;
+              remoteShieldCooldownUntil = now + SHIELD_COOLDOWN;
+            }
+          }
+        }
       });
       document.getElementById('menuScreen').style.display = 'none';
       document.getElementById('gameHud').classList.add('show');
@@ -1044,8 +1200,21 @@ document.getElementById('btnMpConnect').addEventListener('click', ()=>{
           showBanner('ПОЛЕТЕЛИ!');
           playCountdownGo();
           gameStarted = true;
+          startGameMusic();
         } else if(data.type === 'state'){
-          applyRemoteState(data.state);
+          // Positions go into the snapshot buffer (interpolated in the render loop);
+          // discrete events (score, game over) apply immediately.
+          mpSnapshots.push({t: performance.now(), s: data.state});
+          if(mpSnapshots.length > 40) mpSnapshots.shift();
+          applyRemoteEvents(data.state);
+        } else if(data.type === 'banner'){
+          showBanner(data.text);
+        } else if(data.type === 'fx' && data.kind === 'goal'){
+          const p = new THREE.Vector3().fromArray(data.pos);
+          spawnExplosion(p, 'rgba(255,201,74,0.95)', 30, 1.7);
+          spawnExplosion(p, data.ring === 'ai' ? 'rgba(255,98,89,0.95)' : 'rgba(61,214,208,0.95)', 20, 1.2);
+          flashRing(data.ring === 'ai' ? ringAI : ringYou);
+          popScore(data.ring === 'ai' ? 'scoreYou' : 'scoreAI');
         }
       });
     });
@@ -1066,18 +1235,10 @@ function runClientCountdownVisual(digit){
   setTimeout(()=>{ numEl.classList.add('fall-out'); }, 550);
 }
 
-// Applies the host's authoritative state on the joining player's screen.
+// Discrete events from the host's state (score changes, game over) — applied instantly on receipt.
 // Note: from the client's point of view, "their" drone is aiDrone (host calls it that internally) —
 // camera/controls are relabelled locally so it still feels like controlling "your own" drone.
-function applyRemoteState(state){
-  player.position.fromArray(state.player.p);
-  player.rotation.set(state.player.r[0], state.player.r[1], state.player.r[2]);
-  aiDrone.position.fromArray(state.aiDrone.p);
-  aiDrone.rotation.set(state.aiDrone.r[0], state.aiDrone.r[1], state.aiDrone.r[2]);
-  lure.position.fromArray(state.lure.p);
-  lure.rotation.y = state.lure.ry;
-  winBall.position.fromArray(state.winBall.p);
-  winBall.scale.setScalar(state.winBall.s);
+function applyRemoteEvents(state){
   if(state.scoreYou !== scoreYou || state.scoreAI !== scoreAI){
     if(state.scoreYou > scoreYou || state.scoreAI > scoreAI) playGoalChime();
   }
@@ -1086,9 +1247,54 @@ function applyRemoteState(state){
   document.getElementById('scoreAI').textContent = scoreYou;
   if(state.gameOver && !gameOver){
     gameOver = true;
+    stopGameMusic();
     document.getElementById('winscreen').classList.add('show');
     document.getElementById('winText').textContent = state.winnerIsHost ? 'СОПЕРНИК ПОБЕДИЛ' : (state.viaWinBall ? 'ТЫ ПОЙМАЛ ЗОЛОТОЙ ШАР — ПОБЕДА!' : 'ТЫ ПОЙМАЛ БОЛЬШЕ ПРИМАНОК');
   }
+}
+
+// ---- Snapshot interpolation: the client renders ~110ms in the past, blending between the two
+// snapshots that bracket the render time. This replaces the old per-packet teleporting, which
+// stuttered on any network jitter. Slight extrapolation (t up to 1.25) covers late packets.
+function lerpAngle(a, b, t){
+  let d = (b - a) % (Math.PI*2);
+  if(d > Math.PI) d -= Math.PI*2;
+  if(d < -Math.PI) d += Math.PI*2;
+  return a + d*t;
+}
+function ipos(obj, a, b, t){
+  obj.position.set(a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t);
+}
+function irot(obj, a, b, t){
+  obj.rotation.set(lerpAngle(a[0],b[0],t), lerpAngle(a[1],b[1],t), lerpAngle(a[2],b[2],t));
+}
+function clientInterpolateFrame(){
+  if(mpSnapshots.length === 0) return;
+  const renderT = performance.now() - MP_INTERP_DELAY;
+  // Drop history we've moved past, but always keep one snapshot older than renderT to blend from
+  while(mpSnapshots.length > 2 && mpSnapshots[1].t <= renderT) mpSnapshots.shift();
+  const A = mpSnapshots[0];
+  const B = mpSnapshots[Math.min(1, mpSnapshots.length-1)];
+  let t = (B.t === A.t) ? 1 : (renderT - A.t) / (B.t - A.t);
+  if(t > 2.5){
+    // The stream stalled (tab hiccup / packet burst) — snap to the newest snapshot instead of
+    // slowly rubber-banding across the gap
+    const L = mpSnapshots[mpSnapshots.length-1].s;
+    player.position.fromArray(L.player.p); player.rotation.set(L.player.r[0],L.player.r[1],L.player.r[2]);
+    aiDrone.position.fromArray(L.aiDrone.p); aiDrone.rotation.set(L.aiDrone.r[0],L.aiDrone.r[1],L.aiDrone.r[2]);
+    lure.position.fromArray(L.lure.p); lure.rotation.y = L.lure.ry;
+    winBall.position.fromArray(L.winBall.p); winBall.scale.setScalar(L.winBall.s);
+    mpSnapshots.splice(0, mpSnapshots.length-1);
+    return;
+  }
+  t = Math.max(0, Math.min(t, 1.25));
+  const P = A.s, Q = B.s;
+  ipos(player, P.player.p, Q.player.p, t);   irot(player, P.player.r, Q.player.r, t);
+  ipos(aiDrone, P.aiDrone.p, Q.aiDrone.p, t); irot(aiDrone, P.aiDrone.r, Q.aiDrone.r, t);
+  ipos(lure, P.lure.p, Q.lure.p, t);
+  lure.rotation.y = lerpAngle(P.lure.ry, Q.lure.ry, t);
+  ipos(winBall, P.winBall.p, Q.winBall.p, t);
+  winBall.scale.setScalar(P.winBall.s + (Q.winBall.s - P.winBall.s)*t);
 }
 const volumeSlider = document.getElementById('volumeSlider');
 setMasterVolume(volumeSlider.value/100);
@@ -1114,6 +1320,7 @@ document.getElementById('btnExit').addEventListener('click', ()=>{
     if(mpConn){ try{ mpConn.close(); }catch(e){} mpConn = null; }
     if(mpPeer){ try{ mpPeer.destroy(); }catch(e){} mpPeer = null; }
     multiplayerMode = null;
+    mpSnapshots.length = 0;
     mpResetChoiceView();
     document.getElementById('winscreen').classList.remove('show');
     document.getElementById('gameHud').classList.remove('show');
@@ -1162,8 +1369,8 @@ function startCountdown(onComplete){
 }
 
 function resetMatch(){
-  player.position.set(0, 2, 30);
-  aiDrone.position.set(0, 2, -30);
+  player.position.set(0, 2, 45);
+  aiDrone.position.set(0, 2, -45);
   playerVel.set(0,0,0); aiVel.set(0,0,0);
   playerYaw = 0;
   camera.fov = 72; camera.updateProjectionMatrix();
@@ -1183,7 +1390,7 @@ function resetMatch(){
 
 function restartWithCountdown(){
   resetMatch();
-  startCountdown(()=>{ gameStarted = true; });
+  startCountdown(()=>{ gameStarted = true; startGameMusic(); });
 }
 
 const menuScreenEl = document.getElementById('menuScreen');
@@ -1205,6 +1412,7 @@ document.getElementById('btnStart').addEventListener('click', (e)=>{
     restartWithCountdown();
   } else {
     paused = false;
+    startGameMusic();
   }
 });
 
@@ -1339,6 +1547,7 @@ dashBtn.addEventListener('mousedown', e=>{ e.preventDefault(); triggerDash(); })
 // pops it loose and sends it flying with extra speed.
 let isShielding = false;
 let shieldCooldownUntil = 0;
+let shieldRequestedMP = false; // client mode: "shield pressed" flag, sent to the host with the next input packet
 const SHIELD_COOLDOWN = 4500; // ms
 const SHIELD_DURATION = 700; // ms
 const shieldBtn = document.getElementById('shieldBtn');
@@ -1347,6 +1556,7 @@ function triggerShield(){
   if(now < shieldCooldownUntil) return;
   isShielding = true;
   shieldCooldownUntil = now + SHIELD_COOLDOWN;
+  if(multiplayerMode === 'client') shieldRequestedMP = true; // tell the host on the next input packet
   setTimeout(()=>{ isShielding = false; }, SHIELD_DURATION);
   showShieldEffect(0.8 * RING_MAIN_RADIUS, SHIELD_DURATION);
   shieldBtn.classList.add('cooldown');
@@ -1369,7 +1579,7 @@ shieldBtn.addEventListener('mousedown', e=>{ e.preventDefault(); triggerShield()
 // ---------------- Three.js scene ----------------
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8FC3E8);
-scene.fog = new THREE.FogExp2(0xB9D9E8, 0.005);
+scene.fog = new THREE.FogExp2(0xB9D9E8, 0.0034);
 
 // Gradient sky dome — a single big sphere with a soft top-to-bottom gradient, much richer
 // looking than a flat background color, for essentially no extra render cost.
@@ -1392,7 +1602,7 @@ const skyDome = new THREE.Mesh(
 );
 scene.add(skyDome);
 
-const camera = new THREE.PerspectiveCamera(72, window.innerWidth/window.innerHeight, 0.1, 700);
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth/window.innerHeight, 0.1, 1100);
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -1505,19 +1715,19 @@ function makeGrassTexture(){
 }
 const grassTexture = makeGrassTexture();
 const floorMat2 = new THREE.MeshToonMaterial({map: grassTexture, gradientMap: toonGradient});
-const floor = new THREE.Mesh(new THREE.CircleGeometry(150, 48), floorMat2);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(225, 48), floorMat2);
 floor.rotation.x = -Math.PI/2; floor.position.y = -25;
 scene.add(floor);
 
 // ---------------- Mountaintop context: cliff slope, valley floor, and hazy distant peaks ----------------
 // Gives the impression the grass plateau sits on top of a mountain, instead of floating in empty space.
 const cliffMat = toonMat(0x8C8375);
-const cliff = new THREE.Mesh(new THREE.CylinderGeometry(150, 390, 70, 40, 1, true), cliffMat);
+const cliff = new THREE.Mesh(new THREE.CylinderGeometry(225, 520, 70, 40, 1, true), cliffMat);
 cliff.position.y = -25 - 35;
 scene.add(cliff);
 
 const valleyMat = toonMat(0x5C7A52);
-const valleyFloor = new THREE.Mesh(new THREE.CircleGeometry(510, 40), valleyMat);
+const valleyFloor = new THREE.Mesh(new THREE.CircleGeometry(680, 40), valleyMat);
 valleyFloor.rotation.x = -Math.PI/2;
 valleyFloor.position.y = -95;
 scene.add(valleyFloor);
@@ -1576,7 +1786,7 @@ function makeMountain(x, z, height, radius, color){
 const mountainColors = [0x6B7FA6, 0x8593B8, 0x5A6D91, 0x99A6C4, 0x4F6088];
 for(let i=0;i<26;i++){
   const angle = (i/26)*Math.PI*2 + Math.random()*0.15;
-  const r = 285 + Math.random()*165;
+  const r = 430 + Math.random()*245;
   const height = 70 + Math.random()*110;
   const mRadius = 30 + Math.random()*35;
   const color = mountainColors[Math.floor(Math.random()*mountainColors.length)];
@@ -1634,7 +1844,7 @@ function makeTree(x, z, scale){
 }
 
 const treeColliders = [];
-const NUM_TREES = 52; // more trees to keep similar density across the bigger map
+const NUM_TREES = 84; // more trees to keep similar density across the bigger map
 // Matches the tallest canopy layer in makeTree(): trunkHeight*0.6 + 3*2.6 + (3.4-3*0.6), padded ~15% for outline meshes
 const TREE_LOCAL_TOP = (9*0.6 + 3*2.6 + (3.4-3*0.6)) * 1.15;
 
@@ -1650,19 +1860,19 @@ function plantTree(tx, tz, treeScale){
 // The direct approach lane to each ring is kept clear of random forest — a single deliberate
 // obstacle tree is placed in each lane instead, so there's exactly one tree that can get in the way.
 function inApproachLane(x, z){
-  const inRightLane = x > 22 && x < 65 && Math.abs(z) < 12;
-  const inLeftLane = x < -22 && x > -65 && Math.abs(z) < 12;
+  const inRightLane = x > 30 && x < 98 && Math.abs(z) < 13;
+  const inLeftLane = x < -30 && x > -98 && Math.abs(z) < 13;
   return inRightLane || inLeftLane;
 }
 
 let treesPlaced = 0;
 while(treesPlaced < NUM_TREES){
   const angle = Math.random()*Math.PI*2;
-  const r = 21 + Math.random()*120; // spread across almost the whole (now bigger) map
+  const r = 24 + Math.random()*185; // spread across almost the whole (now bigger) map
   const tx = Math.cos(angle)*r, tz = Math.sin(angle)*r;
   // keep spawn lanes, goal areas, and the direct approach lanes clear of random clutter
   const nearSpawn = Math.abs(tz) < 9 && Math.abs(tx) < 12;
-  const nearGoal = Math.abs(Math.abs(tx)-68) < 13 && Math.abs(tz) < 13;
+  const nearGoal = Math.abs(Math.abs(tx)-102) < 15 && Math.abs(tz) < 15;
   if(nearSpawn || nearGoal || inApproachLane(tx,tz)) continue;
   const treeScale = 1.0 + Math.random()*2.0; // even bigger height/size variance across the larger map
   plantTree(tx, tz, treeScale);
@@ -1670,8 +1880,8 @@ while(treesPlaced < NUM_TREES){
 }
 
 // Exactly one deliberate obstacle tree in each lane leading to a ring
-plantTree(43 + Math.random()*6, (Math.random()-0.5)*14, 1.8);
-plantTree(-43 - Math.random()*6, (Math.random()-0.5)*14, 1.8);
+plantTree(64 + Math.random()*9, (Math.random()-0.5)*16, 1.8);
+plantTree(-64 - Math.random()*9, (Math.random()-0.5)*16, 1.8);
 
 // Small scattered ground clutter — rocks and bushes for a bit more life without extra complexity
 function makeRock(x,z){
@@ -1699,9 +1909,9 @@ function makeBush(x,z){
   group.position.set(x, -25, z);
   return group;
 }
-for(let i=0;i<32;i++){
+for(let i=0;i<48;i++){
   const angle = Math.random()*Math.PI*2;
-  const r = 82 + Math.random()*83;
+  const r = 100 + Math.random()*140;
   const cx = Math.cos(angle)*r, cz = Math.sin(angle)*r;
   scene.add(Math.random() < 0.5 ? makeRock(cx,cz) : makeBush(cx,cz));
 }
@@ -1719,15 +1929,15 @@ function makeCloud(x,y,z){
   group.position.set(x,y,z);
   return group;
 }
-for(let i=0;i<14;i++){
+for(let i=0;i<20;i++){
   const angle = Math.random()*Math.PI*2;
-  const r = 60 + Math.random()*82;
-  scene.add(makeCloud(Math.cos(angle)*r, 20+Math.random()*25, Math.sin(angle)*r));
+  const r = 80 + Math.random()*135;
+  scene.add(makeCloud(Math.cos(angle)*r, 22+Math.random()*55, Math.sin(angle)*r));
 }
 
 // Arena bounds (invisible dome, just a radius we clamp to)
-const ARENA_RADIUS = 142;
-const ARENA_HEIGHT_MIN = -20, ARENA_HEIGHT_MAX = 55;
+const ARENA_RADIUS = 213; // 142 * 1.5 — map scaled up 1.5x again
+const ARENA_HEIGHT_MIN = -20, ARENA_HEIGHT_MAX = 83; // ceiling raised 1.5x (was 55)
 
 // Goal rings — one per player (2 players = 2 goals), enlarged 1.2x again on top of the previous size
 function makeRing(color, x, z, y){
@@ -1739,9 +1949,10 @@ function makeRing(color, x, z, y){
   torus.rotation.y = Math.PI/2;
   addOutline(torus, 1.12, 0x0a1420);
   scene.add(torus);
+  return torus;
 }
-makeRing(0x3DD6D0, -68, 0, 5);
-makeRing(0xFF6259, 68, 0, 5);
+const ringYou = makeRing(0x3DD6D0, -102, 0, 5);
+const ringAI = makeRing(0xFF6259, 102, 0, 5);
 
 // Drone builder — a bit more detail (stepped hull, cockpit dome, camera gimbal, propeller blades, skids)
 // while staying low-poly and simple in spirit.
@@ -1829,11 +2040,11 @@ function buildDrone(color){
 }
 
 const player = buildDrone(0x3DD6D0);
-player.position.set(0, 2, 30);
+player.position.set(0, 2, 45);
 scene.add(player);
 
 const aiDrone = buildDrone(0xFF6259);
-aiDrone.position.set(0, 2, -30);
+aiDrone.position.set(0, 2, -45);
 scene.add(aiDrone);
 
 // Drone contact shadows — shrink and fade as the drone climbs, classic cheap "sun shadow" trick
@@ -2003,19 +2214,84 @@ winBall.add(winBallHalo);
 
 // ---------------- Explosion effect (drone-vs-drone collision) ----------------
 const explosionParticles = [];
-function spawnExplosion(position){
-  for(let i=0;i<18;i++){
-    const spr = makeGlowSprite('rgba(255,140,40,0.95)', 1.1+Math.random()*0.9);
+function spawnExplosion(position, color, count, power){
+  color = color || 'rgba(255,140,40,0.95)';
+  count = count || 18;
+  power = power || 1;
+  for(let i=0;i<count;i++){
+    const spr = makeGlowSprite(color, 1.1+Math.random()*0.9);
     spr.position.copy(position);
     scene.add(spr);
     const dir = new THREE.Vector3((Math.random()-0.5), Math.random()*0.6+0.1, (Math.random()-0.5)).normalize();
     explosionParticles.push({
       sprite: spr,
-      vel: dir.multiplyScalar(9+Math.random()*16),
+      vel: dir.multiplyScalar((9+Math.random()*16)*power),
       life: 0,
       maxLife: 0.55+Math.random()*0.35
     });
   }
+}
+
+// ---------------- Off-screen edge arrows: point toward the lure / gold win ball ----------------
+const arrowLureEl = document.getElementById('arrowLure');
+const arrowWinEl = document.getElementById('arrowWin');
+const _edgeProj = new THREE.Vector3();
+function updateEdgeArrow(el, worldPos){
+  _edgeProj.copy(worldPos).project(camera);
+  const behind = _edgeProj.z > 1;
+  let nx = _edgeProj.x, ny = _edgeProj.y;
+  if(behind){ nx = -nx; ny = -ny; } // flip so "behind you" points backwards, not mirrored forward
+  if(!behind && Math.abs(nx) < 0.92 && Math.abs(ny) < 0.86){
+    el.style.display = 'none'; // target is on screen — no arrow needed
+    return;
+  }
+  let dx = nx, dy = ny;
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len; dy /= len;
+  const margin = 48;
+  const hw = window.innerWidth/2 - margin, hh = window.innerHeight/2 - margin;
+  const k = Math.min(hw/Math.max(Math.abs(dx), 1e-4), hh/Math.max(Math.abs(dy), 1e-4));
+  const px = window.innerWidth/2 + dx*k;
+  const py = window.innerHeight/2 - dy*k; // NDC y is up, CSS y is down
+  const ang = Math.atan2(-dy, dx); // the ➤ glyph points right at 0 rotation
+  el.style.display = 'block';
+  el.style.transform = `translate(${px}px, ${py}px) translate(-50%,-50%) rotate(${ang}rad)`;
+}
+function updateEdgeArrows(){
+  const active = gameStarted && !paused && !gameOver && !countdownActive;
+  if(!active){
+    arrowLureEl.style.display = 'none';
+    arrowWinEl.style.display = 'none';
+    return;
+  }
+  updateEdgeArrow(arrowLureEl, lure.position);
+  updateEdgeArrow(arrowWinEl, winBall.position);
+}
+
+// ---------------- Goal celebration FX ----------------
+let goalShake = 0; // extra camera shake impulse on goals, decays over ~0.5s
+function flashRing(torus){
+  const m = torus.material;
+  const start = performance.now();
+  const iv = setInterval(()=>{
+    const k = (performance.now()-start)/650;
+    if(k >= 1){ m.emissiveIntensity = 0.75; clearInterval(iv); }
+    else m.emissiveIntensity = 3.4 - 2.65*k;
+  }, 40);
+}
+function popScore(id){
+  const el = document.getElementById(id);
+  el.classList.remove('score-pop');
+  void el.offsetWidth; // restart the CSS animation
+  el.classList.add('score-pop');
+}
+// One call for everything a goal deserves: double particle burst, ring flash, camera kick, score pop
+function goalCelebration(pos, ringTorus, ringColorCss, scoreElId){
+  spawnExplosion(pos, 'rgba(255,201,74,0.95)', 30, 1.7); // gold — the lure itself bursting
+  spawnExplosion(pos, ringColorCss, 20, 1.2);            // ring-colored secondary burst
+  flashRing(ringTorus);
+  goalShake = 0.9;
+  popScore(scoreElId);
 }
 function updateExplosions(dt){
   for(let i=explosionParticles.length-1;i>=0;i--){
@@ -2038,7 +2314,7 @@ let winBallTarget = new THREE.Vector3();
 function pickNewWinBallTarget(){
   const angle = Math.random()*Math.PI*2;
   const r = ARENA_RADIUS*0.65 + Math.random()*ARENA_RADIUS*0.32; // hugs the edges of the map
-  winBallTarget.set(Math.cos(angle)*r, 6+Math.random()*35, Math.sin(angle)*r);
+  winBallTarget.set(Math.cos(angle)*r, 6+Math.random()*62, Math.sin(angle)*r);
 }
 pickNewWinBallTarget();
 setInterval(()=>{ if(winBallState === 'wander') pickNewWinBallTarget(); }, 4000);
@@ -2061,8 +2337,8 @@ const PICKUP_RADIUS = 2.8;
 const STEAL_RADIUS = 3.6;
 const DRONE_COLLIDE_RADIUS = 3.6;
 let collisionInvulnUntil = 0;
-const playerGoals = [{x:-68,y:5,z:0}];
-const aiGoals = [{x:68,y:5,z:0}];
+const playerGoals = [{x:-102,y:5,z:0}];
+const aiGoals = [{x:102,y:5,z:0}];
 const GOAL_RADIUS = 5.184;
 
 const playerVel = new THREE.Vector3();
@@ -2070,16 +2346,29 @@ const aiVel = new THREE.Vector3();
 let playerYaw = 0;
 let remoteYaw = 0;
 let clientPrevPos = null;
+// ---------------- Bot difficulty levels ----------------
+// speed — base chase speed; boostChance/boostMult — how often and how hard it bursts (bursts also
+// enable stealing at range); aimScale — multiplier on the aim wobble (smaller = more precise)
+const AI_LEVELS = {
+  easy:   {speed:10, boostChance:0.015, boostMult:1.05, aimScale:1.8},
+  normal: {speed:15, boostChance:0.04,  boostMult:1.1,  aimScale:1.0},
+  hard:   {speed:20, boostChance:0.10,  boostMult:1.18, aimScale:0.4}
+};
+let aiLevel = 'normal';
+
 let aiBoostMultiplier = 1;
 setInterval(()=>{
-  aiBoostMultiplier = Math.random() < 0.04 ? 1.1 : 1;
+  const L = AI_LEVELS[aiLevel];
+  aiBoostMultiplier = Math.random() < L.boostChance ? L.boostMult : 1;
   setTimeout(()=>{ aiBoostMultiplier = 1; }, 500);
 }, 5500);
 
-// AI aim wobble — noticeably imperfect aim, updated often so it visibly overshoots and corrects
+// AI aim wobble — noticeably imperfect aim, updated often so it visibly overshoots and corrects.
+// Scaled by the difficulty level: easy bots miss wide, hard bots barely wobble.
 let aiAimOffset = new THREE.Vector3();
 setInterval(()=>{
-  aiAimOffset.set((Math.random()-0.5)*26, (Math.random()-0.5)*10, (Math.random()-0.5)*26);
+  const s = AI_LEVELS[aiLevel].aimScale;
+  aiAimOffset.set((Math.random()-0.5)*26*s, (Math.random()-0.5)*10*s, (Math.random()-0.5)*26*s);
 }, 950);
 
 function showBanner(text){
@@ -2091,6 +2380,7 @@ function showBanner(text){
 
 function endGame(winner, viaWinBall){
   gameOver = true;
+  stopGameMusic();
   document.getElementById('winscreen').classList.add('show');
   if(viaWinBall){
     document.getElementById('winText').textContent = winner === 'you' ? 'ТЫ ПОЙМАЛ ЗОЛОТОЙ ШАР — ПОБЕДА!' : 'СОПЕРНИК ПОЙМАЛ ЗОЛОТОЙ ШАР';
@@ -2185,16 +2475,27 @@ function animate(){
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if(multiplayerMode === 'client'){
-    // Client: no local physics — just send input and render whatever the host last sent.
+    // Client: no local physics — send input, smoothly interpolate the host's snapshot stream.
+    clientInterpolateFrame();
     if(gameStarted && !gameOver && mpConn && mpConn.open){
       smoothStick(smoothMove, moveStick, dt, 9);
       smoothStick(smoothLift, liftStick, dt, 9);
+      // Map sticks through the CLIENT'S OWN Mode 1 / Mode 2 setting and send semantic input —
+      // the host applies throttle/pitch/roll directly, so the remote player's mode choice works.
+      let cThrottle, cPitch;
+      if(controlMode === 'mode2'){
+        cThrottle = -smoothMove.y; cPitch = -smoothLift.y;
+      } else {
+        cPitch = -smoothMove.y; cThrottle = -smoothLift.y;
+      }
       mpConn.send({type:'input', input:{
-        moveX: smoothMove.x, moveY: smoothMove.y,
-        liftX: smoothLift.x, liftY: smoothLift.y,
-        dash: dashRequested
+        yawIn: smoothMove.x, throttle: cThrottle, pitch: cPitch, roll: smoothLift.x,
+        dash: dashRequested, shield: shieldRequestedMP
       }});
       dashRequested = false;
+      shieldRequestedMP = false;
+      // The client's own drone is aiDrone — keep the shield visual glued to it
+      if(shieldEffectGroup.visible) shieldEffectGroup.position.copy(aiDrone.position);
 
       // Camera follows the client's own drone — which the host calls "aiDrone" internally
       const camDistance = 17;
@@ -2265,12 +2566,13 @@ function animate(){
     // In multiplayer (hosting), the second drone is driven by the real remote player's input
     // instead of AI logic. Otherwise, the usual bot behavior chases the lure/goal/player.
     if(multiplayerMode === 'host'){
-      remoteYaw -= remoteInput.moveX * 3.0 * dt * 1.4;
+      // Semantic input from the client (already mapped through the client's own Mode 1/2 choice)
+      remoteYaw -= (remoteInput.yawIn || 0) * 3.0 * dt * 1.4;
       const rForward = new THREE.Vector3(Math.sin(remoteYaw), 0, Math.cos(remoteYaw));
       const rRight = new THREE.Vector3(-Math.cos(remoteYaw), 0, Math.sin(remoteYaw));
-      const rThrottle = -remoteInput.moveY;
-      const rPitch = -remoteInput.liftY;
-      const rRoll = remoteInput.liftX;
+      const rThrottle = remoteInput.throttle || 0;
+      const rPitch = remoteInput.pitch || 0;
+      const rRoll = remoteInput.roll || 0;
       aiVel.x += (rForward.x*rPitch + rRight.x*rRoll) * 38 * dt;
       aiVel.z += (rForward.z*rPitch + rRight.z*rRoll) * 38 * dt;
       aiVel.y += rThrottle * 24 * dt;
@@ -2299,7 +2601,7 @@ function animate(){
       const toLure = new THREE.Vector3().subVectors(aiChaseTarget, aiDrone.position).add(aiAimOffset);
       const dist = toLure.length();
       toLure.normalize();
-      const aiSpeed = 14 * aiBoostMultiplier;
+      const aiSpeed = AI_LEVELS[aiLevel].speed * aiBoostMultiplier;
       aiVel.x += toLure.x * aiSpeed * dt;
       aiVel.z += toLure.z * aiSpeed * dt;
       aiVel.y += toLure.y * aiSpeed * dt * 0.6;
@@ -2351,7 +2653,27 @@ function animate(){
         // carrier (still standing right on top of it this same frame) would instantly re-pick it up.
         lureImmuneUntil = performance.now() + 450;
         showBanner('ЩИТ ВЫБИЛ ПРИМАНКУ!');
+        if(multiplayerMode === 'host' && mpConn && mpConn.open) mpConn.send({type:'banner', text:'СОПЕРНИК ВЫБИЛ ПРИМАНКУ ЩИТОМ!'});
         isShielding = false;
+      }
+    }
+
+    // Remote player's shield (multiplayer host only): same knockout rule, mirrored —
+    // while the remote shield is active and the HOST carries the ball, contact knocks it loose
+    if(multiplayerMode === 'host' && performance.now() < remoteShieldUntil && carrier === 'player'){
+      const rShieldDist = aiDrone.position.distanceTo(lure.position);
+      if(rShieldDist < SHIELD_RADIUS){
+        carrier = null;
+        const away = new THREE.Vector3().subVectors(lure.position, aiDrone.position);
+        away.y = 0;
+        if(away.lengthSq() < 0.001) away.set(0,0,1);
+        away.normalize();
+        lureVel.copy(away.multiplyScalar(48));
+        lureVel.y += 7;
+        lureImmuneUntil = performance.now() + 450;
+        showBanner('СОПЕРНИК ВЫБИЛ ПРИМАНКУ ЩИТОМ!');
+        if(mpConn && mpConn.open) mpConn.send({type:'banner', text:'ЩИТ ВЫБИЛ ПРИМАНКУ!'});
+        remoteShieldUntil = 0;
       }
     }
 
@@ -2391,6 +2713,8 @@ function animate(){
       document.getElementById('scoreYou').textContent = scoreYou;
       showBanner('ГОЛ! +1');
       playGoalChime();
+      goalCelebration(lure.position.clone(), ringAI, 'rgba(255,98,89,0.95)', 'scoreYou');
+      if(multiplayerMode === 'host' && mpConn && mpConn.open) mpConn.send({type:'fx', kind:'goal', pos:lure.position.toArray(), ring:'ai'});
       carrier = null;
       pickNewLureTarget();
       lure.position.set(0, 10, 0);
@@ -2398,6 +2722,8 @@ function animate(){
     } else if(carrier === 'ai' && nearAnyGoal(lure.position, playerGoals)){
       scoreAI++;
       document.getElementById('scoreAI').textContent = scoreAI;
+      goalCelebration(lure.position.clone(), ringYou, 'rgba(61,214,208,0.95)', 'scoreAI');
+      if(multiplayerMode === 'host' && mpConn && mpConn.open) mpConn.send({type:'fx', kind:'goal', pos:lure.position.toArray(), ring:'you'});
       showBanner('СОПЕРНИК ЗАБИЛ ГОЛ');
       playGoalChime();
       carrier = null;
@@ -2464,8 +2790,12 @@ function animate(){
 
     // Catching the win ball ends the match immediately
     if(distToPlayer < 2.0){
+      spawnExplosion(winBall.position.clone(), 'rgba(224,92,255,0.95)', 44, 2.0);
+      goalShake = 1.1;
       endGame('you', true);
     } else if(distToAI < 2.0){
+      spawnExplosion(winBall.position.clone(), 'rgba(224,92,255,0.95)', 44, 2.0);
+      goalShake = 1.1;
       endGame('ai', true);
     }
 
@@ -2475,7 +2805,6 @@ function animate(){
 
     updateTrail(playerTrail, player.position, playerVel.length());
     updateTrail(aiTrail, aiDrone.position, aiVel.length());
-    updateExplosions(dt);
     updateEngineSound(playerVel.length(), isDashing, 0.75);
     updateDroneShadow(playerShadow, player.position);
     updateDroneShadow(aiShadow, aiDrone.position);
@@ -2483,7 +2812,7 @@ function animate(){
 
     // Dynamic camera: pulls back and shakes at high speed for a spectacular feel
     const playerSpeedMag = playerVel.length();
-    const shake = Math.min(0.25, playerSpeedMag*0.01);
+    const shake = Math.min(0.25, playerSpeedMag*0.01) + goalShake;
     const shakeX = (Math.random()-0.5)*shake;
     const shakeY = (Math.random()-0.5)*shake;
 
@@ -2539,7 +2868,7 @@ function animate(){
     menuBallRetarget -= dt;
     if(menuBallRetarget <= 0){
       const angle = Math.random()*Math.PI*2;
-      const r = 8 + Math.random()*52;
+      const r = 12 + Math.random()*80;
       menuBallTarget.set(Math.cos(angle)*r, 6+Math.random()*18, Math.sin(angle)*r);
       menuBallRetarget = 1 + Math.random()*2;
     }
@@ -2687,6 +3016,9 @@ function animate(){
     updateEngineSound(0);
   }
 
+  updateExplosions(dt);
+  goalShake = Math.max(0, goalShake - dt*(goalShake*5 + 0.4)); // fast decay of the goal camera kick
+  updateEdgeArrows();
   renderer.render(scene, camera);
 }
 animate();
