@@ -2556,7 +2556,7 @@ function collideWithEnvironment(pos, vel){
     vel.multiplyScalar(0.5);
   }
   if(pos.y < ARENA_HEIGHT_MIN+2){ pos.y = ARENA_HEIGHT_MIN+2; if(vel.y < 0) vel.y = 0; vel.multiplyScalar(0.7); }
-  if(pos.y > ARENA_HEIGHT_MAX){ pos.y = ARENA_HEIGHT_MAX; if(vel.y > 0) vel.y = 0; vel.multiplyScalar(0.7); }
+  if(pos.y > ARENA_HEIGHT_MAX){ pos.y = ARENA_HEIGHT_MAX; if(vel.y > 0) vel.y = 0; } // no speed penalty at the ceiling — it felt like an invisible sticky net
 
   // Trees: each tree's own canopy top height is checked individually, matching its actual visual size
   for(const t of treeColliders){
@@ -2911,6 +2911,12 @@ function animate(){
     winBallVel.multiplyScalar(winBallDrag);
     winBall.position.add(winBallVel.clone().multiplyScalar(dt*3));
     clampToArena(winBall.position);
+    // The gold ball's escape dashes could pin it right AT the flight ceiling, where drones can't
+    // dive on it from above — keep it at least 8 units below the ceiling at all times
+    if(winBall.position.y > ARENA_HEIGHT_MAX - 8){
+      winBall.position.y = ARENA_HEIGHT_MAX - 8;
+      if(winBallVel.y > 0) winBallVel.y = 0;
+    }
     winBall.rotation.y += dt*6;
     winBall.rotation.x += dt*4;
     const winPulse = 1 + Math.sin(performance.now()*0.006)*0.25;
