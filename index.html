@@ -1841,8 +1841,9 @@ function makeTree(x, z, scale){
 
 const treeColliders = [];
 const NUM_TREES = 56; // more trees to keep similar density across the bigger map
-// Matches the tallest canopy layer in makeTree(): trunkHeight*0.6 + 3*2.6 + (3.4-3*0.6), padded ~15% for outline meshes
-const TREE_LOCAL_TOP = (9*0.6 + 3*2.6 + (3.4-3*0.6)) * 1.15;
+// Matches the tallest canopy layer in makeTree(): trunkHeight*0.6 + 3*2.6 + (3.4-3*0.6) = 14.8.
+// No padding — the old ~15% pad made the hitbox visibly taller than the tree.
+const TREE_LOCAL_TOP = 9*0.6 + 3*2.6 + (3.4-3*0.6);
 
 const extraScenery = []; // "extra" half of the vegetation — hidden (and un-collidable) in low detail
 const sceneryGroups = []; // everything spawned by generateScenery — swept before each regeneration
@@ -2268,7 +2269,11 @@ setInterval(pickNewLureTarget, 2200);
 // You can now fly UNDER a canopy right past the trunk — the old collider was one fat cylinder.
 function treeRadiusAt(t, y){
   if(y > t.topY) return 0;
-  return y < t.canopyBaseY ? t.trunkRadius : t.canopyRadius;
+  if(y < t.canopyBaseY) return t.trunkRadius;
+  // The canopy tapers toward the top, matching the stacked shrinking leaf blobs (r 3.4 -> 1.6):
+  // full width for the lower 55%, then narrowing to ~50% at the very tip
+  const k = (y - t.canopyBaseY) / (t.topY - t.canopyBaseY);
+  return t.canopyRadius * (k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45 * 0.5);
 }
 function bounceOffTrees(pos, vel, damping){
   for(const t of treeColliders){
@@ -2447,7 +2452,7 @@ const DRONE_COLLIDE_RADIUS = 3.6;
 let collisionInvulnUntil = 0;
 const playerGoals = [{x:-130,y:12.5,z:0}];
 const aiGoals = [{x:130,y:12.5,z:0}];
-const GOAL_RADIUS = 5.184;
+const lurePrevPos = new THREE.Vector3(0, 10, 0); // the lure's position at the start of the current frame
 
 const playerVel = new THREE.Vector3();
 const aiVel = new THREE.Vector3();
@@ -2638,6 +2643,8 @@ function animate(){
     const forward = new THREE.Vector3(Math.sin(playerYaw), 0, Math.cos(playerYaw));
     const right = new THREE.Vector3(-Math.cos(playerYaw), 0, Math.sin(playerYaw));
 
+    lurePrevPos.copy(lure.position); // where the ball was at the start of this frame — for the ring-pass test
+
     let throttleInput, pitchThrust;
     if(controlMode === 'mode2'){
       throttleInput = -smoothMove.y;
@@ -2701,13 +2708,18 @@ function animate(){
           const p = new THREE.Vector3(g.x,g.y,g.z);
           return (!best || aiDrone.position.distanceTo(p) < aiDrone.position.distanceTo(best)) ? p : best;
         }, null);
+        // Goals now require flying THROUGH the hoop, so aim a few units beyond the ring plane
+        nearestGoal.x += Math.sign(nearestGoal.x) * 6;
         aiChaseTarget = nearestGoal;
       } else if(carrier === 'player'){
         aiChaseTarget = player.position;
       } else {
         aiChaseTarget = lure.position;
       }
-      const toLure = new THREE.Vector3().subVectors(aiChaseTarget, aiDrone.position).add(aiAimOffset);
+      // While delivering, the aim wobble is almost disabled — with the ring-pass rule a full-size
+      // wobble (especially on easy) would make the bot bonk the torus forever and never score
+      const wobble = carrier === 'ai' ? 0.12 : 1;
+      const toLure = new THREE.Vector3().subVectors(aiChaseTarget, aiDrone.position).addScaledVector(aiAimOffset, wobble);
       const dist = toLure.length();
       toLure.normalize();
       const aiSpeed = AI_LEVELS[aiLevel].speed * aiBoostMultiplier;
@@ -2813,11 +2825,19 @@ function animate(){
       }
     }
 
-    // Goal delivery scoring
-    function nearAnyGoal(pos, goals){
-      return goals.some(g => pos.distanceTo(new THREE.Vector3(g.x,g.y,g.z)) < GOAL_RADIUS);
+    // Goal delivery scoring: the ball's CENTER must pass through the ring's opening.
+    // The ring plane is x = g.x (rings face the arena center); we check whether this frame's
+    // movement segment crossed that plane, and whether the crossing point lies inside the hole.
+    function passedThroughRing(prev, pos, g){
+      const HOLE_R = RING_MAIN_RADIUS - RING_TUBE_RADIUS;
+      const dx1 = prev.x - g.x, dx2 = pos.x - g.x;
+      if((dx1 > 0) === (dx2 > 0)) return false; // the plane wasn't crossed this frame
+      const t = dx1 / (dx1 - dx2);              // interpolate the exact crossing point
+      const cy = prev.y + (pos.y - prev.y)*t;
+      const cz = prev.z + (pos.z - prev.z)*t;
+      return Math.hypot(cy - g.y, cz - g.z) < HOLE_R;
     }
-    if(carrier === 'player' && nearAnyGoal(lure.position, aiGoals)){
+    if(carrier === 'player' && aiGoals.some(g => passedThroughRing(lurePrevPos, lure.position, g))){
       scoreYou++;
       document.getElementById('scoreYou').textContent = scoreYou;
       showBanner('ГОЛ! +1');
@@ -2828,7 +2848,7 @@ function animate(){
       pickNewLureTarget();
       lure.position.set(0, 10, 0);
       if(scoreYou >= WIN_SCORE) endGame('you');
-    } else if(carrier === 'ai' && nearAnyGoal(lure.position, playerGoals)){
+    } else if(carrier === 'ai' && playerGoals.some(g => passedThroughRing(lurePrevPos, lure.position, g))){
       scoreAI++;
       document.getElementById('scoreAI').textContent = scoreAI;
       goalCelebration(lure.position.clone(), ringYou, 'rgba(61,214,208,0.95)', 'scoreAI');
