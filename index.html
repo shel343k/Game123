@@ -542,8 +542,7 @@ if(screen.orientation && screen.orientation.lock){
 let audioCtx = null;
 let masterGain = null;
 let masterVolume = 0.85;
-let engineOsc1, engineOsc2, engineOsc3, engineOsc4, engineGain, engineFilter;
-let engineOsc1B, engineOsc2B, engineOsc3B, engineOsc4B, engineGainB, engineFilterB;
+let engineLayers = []; // four detuned copies of the engine chain = quad-motor sound
 let windNoiseSource, windGain, windFilter;
 let audioReady = false;
 
@@ -567,118 +566,59 @@ function initAudio(){
     }
     return curve;
   }
-  const engineDrive = audioCtx.createWaveShaper();
-  engineDrive.curve = makeDistortionCurve(22);
-  const engineDrive2 = audioCtx.createWaveShaper();
-  engineDrive2.curve = makeDistortionCurve(9); // second softer clip stage for extra crunch
-  engineFilter = audioCtx.createBiquadFilter();
-  engineFilter.type = 'lowpass';
-  engineFilter.frequency.value = 6500;
+  // One engine "motor" = full chain: 4 oscillators -> ring mod -> double waveshaper -> lowpass -> gain.
+  // Four slightly-mismatched copies (detune/ring/LFO all differ) beat and phase against each other,
+  // which reads as four physical motors instead of one synth tone.
+  function makeEngineLayer(cfg){
+    const drive = audioCtx.createWaveShaper();
+    drive.curve = makeDistortionCurve(22);
+    const drive2 = audioCtx.createWaveShaper();
+    drive2.curve = makeDistortionCurve(9); // second softer clip stage for extra crunch
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 6500;
 
-  // Ring modulator — a carrier oscillator multiplies the signal for that metallic/robotic snarl
-  const ringMod = audioCtx.createGain();
-  ringMod.gain.value = 0;
-  const ringCarrier = audioCtx.createOscillator();
-  ringCarrier.type = 'sine';
-  ringCarrier.frequency.value = 95;
-  ringCarrier.connect(ringMod.gain);
-  ringCarrier.start();
+    // Ring modulator — a carrier oscillator multiplies the signal for that metallic/robotic snarl
+    const ringMod = audioCtx.createGain();
+    ringMod.gain.value = 0;
+    const ringCarrier = audioCtx.createOscillator();
+    ringCarrier.type = 'sine';
+    ringCarrier.frequency.value = cfg.ring;
+    ringCarrier.connect(ringMod.gain);
+    ringCarrier.start();
 
-  engineGain = audioCtx.createGain();
-  engineGain.gain.value = 0.0001;
-  engineOsc1 = audioCtx.createOscillator();
-  engineOsc1.type = 'sawtooth';
-  engineOsc1.frequency.value = 560;
-  engineOsc2 = audioCtx.createOscillator();
-  engineOsc2.type = 'sawtooth';
-  engineOsc2.frequency.value = 582;
-  engineOsc3 = audioCtx.createOscillator();
-  engineOsc3.type = 'square';
-  engineOsc3.frequency.value = 1400;
-  engineOsc4 = audioCtx.createOscillator();
-  engineOsc4.type = 'square';
-  engineOsc4.frequency.value = 2100;
-  // A faster, deeper LFO wobbling the pitch gives the motor a snarling growl instead of a flat tone
-  const engineLFO = audioCtx.createOscillator();
-  engineLFO.type = 'sine';
-  engineLFO.frequency.value = 22;
-  const engineLFOGain = audioCtx.createGain();
-  engineLFOGain.gain.value = 14;
-  engineLFO.connect(engineLFOGain);
-  engineLFOGain.connect(engineOsc1.frequency);
-  engineLFOGain.connect(engineOsc2.frequency);
-  engineLFOGain.connect(engineOsc3.frequency);
-  engineLFO.start();
-  engineOsc1.connect(ringMod);
-  engineOsc2.connect(ringMod);
-  engineOsc3.connect(ringMod);
-  engineOsc4.connect(ringMod);
-  ringMod.connect(engineDrive);
-  engineDrive.connect(engineDrive2);
-  engineDrive2.connect(engineFilter);
-  engineFilter.connect(engineGain);
-  engineGain.connect(masterGain);
-  engineOsc1.start();
-  engineOsc2.start();
-  engineOsc3.start();
-  engineOsc4.start();
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0.0001;
+    const o1 = audioCtx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 560*cfg.detune;
+    const o2 = audioCtx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = 582*cfg.detune;
+    const o3 = audioCtx.createOscillator(); o3.type = 'square';   o3.frequency.value = 1400*cfg.detune;
+    const o4 = audioCtx.createOscillator(); o4.type = 'square';   o4.frequency.value = 2100*cfg.detune;
+    // A faster, deeper LFO wobbling the pitch gives the motor a snarling growl instead of a flat tone
+    const lfo = audioCtx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = cfg.lfo;
+    const lfoGain = audioCtx.createGain();
+    lfoGain.gain.value = 14;
+    lfo.connect(lfoGain);
+    lfoGain.connect(o1.frequency);
+    lfoGain.connect(o2.frequency);
+    lfoGain.connect(o3.frequency);
+    lfo.start();
+    [o1,o2,o3,o4].forEach(o=>{ o.connect(ringMod); o.start(); });
+    ringMod.connect(drive);
+    drive.connect(drive2);
+    drive2.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
+    return {o1, o2, o3, o4, gain, filter, detune:cfg.detune, mix:cfg.mix};
+  }
 
-  // Second engine layer — same chain, slightly detuned/offset, mixed underneath the first.
-  // Real drones have multiple motors that never sound perfectly in unison; layering two
-  // slightly-mismatched copies creates natural beating/phasing instead of one flat tone.
-  const engineDriveB = audioCtx.createWaveShaper();
-  engineDriveB.curve = makeDistortionCurve(22);
-  const engineDrive2B = audioCtx.createWaveShaper();
-  engineDrive2B.curve = makeDistortionCurve(9);
-  engineFilterB = audioCtx.createBiquadFilter();
-  engineFilterB.type = 'lowpass';
-  engineFilterB.frequency.value = 6500;
-
-  const ringModB = audioCtx.createGain();
-  ringModB.gain.value = 0;
-  const ringCarrierB = audioCtx.createOscillator();
-  ringCarrierB.type = 'sine';
-  ringCarrierB.frequency.value = 88;
-  ringCarrierB.connect(ringModB.gain);
-  ringCarrierB.start();
-
-  engineGainB = audioCtx.createGain();
-  engineGainB.gain.value = 0.0001;
-  engineOsc1B = audioCtx.createOscillator();
-  engineOsc1B.type = 'sawtooth';
-  engineOsc1B.frequency.value = 568;
-  engineOsc2B = audioCtx.createOscillator();
-  engineOsc2B.type = 'sawtooth';
-  engineOsc2B.frequency.value = 575;
-  engineOsc3B = audioCtx.createOscillator();
-  engineOsc3B.type = 'square';
-  engineOsc3B.frequency.value = 1418;
-  engineOsc4B = audioCtx.createOscillator();
-  engineOsc4B.type = 'square';
-  engineOsc4B.frequency.value = 2085;
-  const engineLFOB = audioCtx.createOscillator();
-  engineLFOB.type = 'sine';
-  engineLFOB.frequency.value = 19;
-  const engineLFOGainB = audioCtx.createGain();
-  engineLFOGainB.gain.value = 14;
-  engineLFOB.connect(engineLFOGainB);
-  engineLFOGainB.connect(engineOsc1B.frequency);
-  engineLFOGainB.connect(engineOsc2B.frequency);
-  engineLFOGainB.connect(engineOsc3B.frequency);
-  engineLFOB.start();
-  engineOsc1B.connect(ringModB);
-  engineOsc2B.connect(ringModB);
-  engineOsc3B.connect(ringModB);
-  engineOsc4B.connect(ringModB);
-  ringModB.connect(engineDriveB);
-  engineDriveB.connect(engineDrive2B);
-  engineDrive2B.connect(engineFilterB);
-  engineFilterB.connect(engineGainB);
-  engineGainB.connect(masterGain);
-  engineOsc1B.start();
-  engineOsc2B.start();
-  engineOsc3B.start();
-  engineOsc4B.start();
+  engineLayers = [
+    makeEngineLayer({detune:1.0,   mix:1.0,  ring:95,  lfo:22}), // the "lead" motor
+    makeEngineLayer({detune:1.015, mix:0.75, ring:88,  lfo:19}), // sharp beat above
+    makeEngineLayer({detune:0.988, mix:0.6,  ring:101, lfo:25}), // slow beat below
+    makeEngineLayer({detune:1.031, mix:0.5,  ring:83,  lfo:17})  // wide shimmer on top
+  ];
 
   // Ambient wind — a filtered noise loop, quiet and constant, just to keep the world from feeling silent
   const bufferSize = audioCtx.sampleRate * 2;
@@ -711,24 +651,21 @@ function updateEngineSound(speed, dashing, volumeMult){
   const dashMult = dashing ? 1.6 : 1;
   const targetFreq = (900 + clamped*30) * (dashing ? 1.3 : 1);
   const baseGain = clamped < 0.3 ? 0.0001 : 0.09 + Math.min(0.16, clamped*0.005);
-  const targetGain = Math.min(0.4, baseGain * dashMult) * 0.49 * vol;
+  // 0.30 normalizes the 4-layer mix sum (1+0.75+0.6+0.5) back to roughly the old 2-layer level,
+  // so the actual loudness cut lives in the volumeMult call sites (game 0.5, menu 0.18)
+  const targetGain = Math.min(0.4, baseGain * dashMult) * 0.30 * vol;
+  const filtFreq = (8500 + clamped*55) * (dashing ? 1.2 : 1);
   const now = audioCtx.currentTime;
-  engineOsc1.frequency.setTargetAtTime(targetFreq, now, 0.0133);
-  engineOsc2.frequency.setTargetAtTime(targetFreq*1.04, now, 0.0133);
-  engineOsc3.frequency.setTargetAtTime(targetFreq*3, now, 0.0133);
-  engineOsc4.frequency.setTargetAtTime(targetFreq*4.5, now, 0.0133);
-  engineGain.gain.setTargetAtTime(targetGain, now, 0.05);
-  engineFilter.frequency.setTargetAtTime((8500+clamped*55) * (dashing ? 1.2 : 1), now, 0.03);
-
-  // Second layer — detuned slightly (~1.5%) so it beats against the first instead of doubling
-  // it exactly, giving the sense of a second motor rather than one louder copy.
-  const targetFreqB = targetFreq * 1.015;
-  engineOsc1B.frequency.setTargetAtTime(targetFreqB, now, 0.0133);
-  engineOsc2B.frequency.setTargetAtTime(targetFreqB*1.035, now, 0.0133);
-  engineOsc3B.frequency.setTargetAtTime(targetFreqB*3, now, 0.0133);
-  engineOsc4B.frequency.setTargetAtTime(targetFreqB*4.5, now, 0.0133);
-  engineGainB.gain.setTargetAtTime(targetGain*0.75, now, 0.05);
-  engineFilterB.frequency.setTargetAtTime((8500+clamped*55) * (dashing ? 1.2 : 1), now, 0.03);
+  // Pitch chases the throttle ~2x faster than before (0.0133 -> 0.006); gain/filter tightened to match
+  for(const L of engineLayers){
+    const f = targetFreq * L.detune;
+    L.o1.frequency.setTargetAtTime(f, now, 0.006);
+    L.o2.frequency.setTargetAtTime(f*1.04, now, 0.006);
+    L.o3.frequency.setTargetAtTime(f*3, now, 0.006);
+    L.o4.frequency.setTargetAtTime(f*4.5, now, 0.006);
+    L.gain.gain.setTargetAtTime(targetGain * L.mix, now, 0.03);
+    L.filter.frequency.setTargetAtTime(filtFreq, now, 0.015);
+  }
 }
 
 function playGoalChime(){
@@ -2511,7 +2448,7 @@ function animate(){
       if(!clientPrevPos) clientPrevPos = aiDrone.position.clone();
       const estSpeed = aiDrone.position.distanceTo(clientPrevPos)/Math.max(dt,0.001);
       clientPrevPos.copy(aiDrone.position);
-      updateEngineSound(estSpeed, false, 0.75);
+      updateEngineSound(estSpeed, false, 0.5);
     }
   } else if(gameStarted && !paused && !gameOver && !countdownActive){
     // Player controls
@@ -2805,7 +2742,7 @@ function animate(){
 
     updateTrail(playerTrail, player.position, playerVel.length());
     updateTrail(aiTrail, aiDrone.position, aiVel.length());
-    updateEngineSound(playerVel.length(), isDashing, 0.75);
+    updateEngineSound(playerVel.length(), isDashing, 0.5);
     updateDroneShadow(playerShadow, player.position);
     updateDroneShadow(aiShadow, aiDrone.position);
     if(shieldEffectGroup.visible) shieldEffectGroup.position.copy(player.position);
@@ -3010,7 +2947,7 @@ function animate(){
     camera.up.set(0,1,0);
     camera.lookAt(midpoint.x, midpoint.y+2, midpoint.z);
 
-    updateEngineSound(Math.max(playerVel.length(), aiVel.length())*0.28, false, 0.3);
+    updateEngineSound(Math.max(playerVel.length(), aiVel.length())*0.28, false, 0.18);
   } else {
     // Paused mid-match, countdown in progress, or game over waiting at the menu — engine sound fades to silence
     updateEngineSound(0);
